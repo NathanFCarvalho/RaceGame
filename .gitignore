@@ -1,0 +1,10 @@
+build/
+
+# CMake generated files
+CMakeUserPresets.json
+cmake-build-*/
+
+# Editors and OS files
+.DS_Store
+.idea/
+.vscode/
