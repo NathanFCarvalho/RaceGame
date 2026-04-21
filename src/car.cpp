@@ -5,7 +5,7 @@ car_structure::car_structure()
 {
     initial_position = {0.0f, 0.0f, 0.0f};
 	current_position = {0.0f, 0.0f, 0.0f};
-	current_velocity = {1.0f, 0.0f, 0.0f};
+	current_velocity = {0.0f, 0.0f, 0.0f};
 	current_acceleration = {0.0f, 0.0f, 0.0f};
 }
 
@@ -27,6 +27,8 @@ void car_structure::action_keyboard(input_devices* inputs, window_structure* win
         accelerate();
     else if (click_down) 
         decelerate();
+    else
+        stop_acceleration();
     return;
 }
 
@@ -39,5 +41,11 @@ void car_structure::accelerate()
 void car_structure::decelerate()
 {
     current_acceleration = {-1.0f, 0.0f, 0.0f};
+    return;
+}
+
+void car_structure::stop_acceleration()
+{
+    current_velocity -= current_velocity*drag_factor;
     return;
 }

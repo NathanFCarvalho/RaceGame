@@ -23,6 +23,11 @@ void scene_structure::initialize()
 	// Define the car
 	// ****************************** //
 
+	ground.initialize_data_on_gpu(mesh_primitive_quadrangle({ -1.0f,0.0f,-1.0f }, {-1.0f,0.0f, 1.0f }, { 1.0f,0.0f,1.0f }, { 1.0f,0.0f,-1.0f }));
+	ground.model.scaling = 50.0f;
+	ground.model.translation = { 0.0f, -0.5f, 0.0f };
+	ground.texture.load_and_initialize_texture_2d_on_gpu(project::path+"assets/checkboard.png");
+
 	car_drawable.initialize_data_on_gpu(mesh_primitive_cube(car.initial_position, 1.0f));
 	car_drawable.model.scaling = 0.5f;
 }
@@ -35,7 +40,8 @@ void scene_structure::display_frame()
 	environment.camera_view = camera_control.camera_model.matrix_view();
 	environment.light = camera_control.camera_model.position();
 	
-	
+	draw(ground, environment);
+
 	if (gui.display_frame)
 		draw(global_frame, environment);
 
@@ -48,6 +54,7 @@ void scene_structure::display_frame()
 	camera_control.look_at(car.current_position + distance_from_car , car.current_position, {0,0,1});
 
 	environment.uniform_generic.uniform_float["time"] = timer.t;
+	
 	
 }
 
@@ -67,11 +74,11 @@ void scene_structure::mouse_click_event()
 }
 void scene_structure::keyboard_event()
 {
-	car.action_keyboard(camera_control.inputs, camera_control.window);
 	camera_control.action_keyboard();
 }
 void scene_structure::idle_frame()
 {
+	car.action_keyboard(camera_control.inputs, camera_control.window);
 	camera_control.idle_frame();
 }
 

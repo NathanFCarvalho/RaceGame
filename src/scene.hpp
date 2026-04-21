@@ -50,6 +50,7 @@ struct scene_structure : cgp::scene_inputs_generic {
 	car_structure car;
 
 	cgp::mesh_drawable car_drawable;
+	cgp::mesh_drawable ground;
 
 	// ****************************** //
 	// Callback functions
