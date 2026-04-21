@@ -1,5 +1,5 @@
-# Transparent billboards
+# Mario Kart
 
-This code uses a shader to display partly transparent textures. The code illustrates this use to display complex foliage of a pine tree.
-
-<img src="pic.jpg" alt="" width="500px"/>
+checklist: 
+    - fazer o carro virar (e a câmera seguir corretamente)
+    - fazer colisões com as paredes
