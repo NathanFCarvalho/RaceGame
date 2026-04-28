@@ -1,5 +1,7 @@
 # Mario Kart
 
-checklist: 
-    - fazer o carro virar (e a câmera seguir corretamente)
+proximos passos: 
+    - botar uma pista de corrida
     - fazer colisões com as paredes
+    - fazer colisões com outros carros
+    - fazer gravidade e rotação de acordo com a gravidade
