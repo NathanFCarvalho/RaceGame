@@ -2,7 +2,9 @@
 
 #include "cgp/cgp.hpp"
 #include "environment.hpp"
-#include "car.hpp"
+#include "car/car.hpp"
+#include "car/car_texture.hpp"
+#include <array>
 
 using cgp::mesh_drawable;
 
@@ -22,7 +24,10 @@ struct scene_structure : cgp::scene_inputs_generic {
 	void display_frame();
 	void display_gui();
 	void display_info();
-	
+
+	void display_car(float dt);
+	void position_camera();
+
 	// ****************************** //
 	// Context
 	// ****************************** //
@@ -50,6 +55,8 @@ struct scene_structure : cgp::scene_inputs_generic {
 	car_structure car;
 
 	cgp::mesh_drawable car_drawable;
+    std::array<cgp::mesh_drawable, 4> wheel_tire_drawables;
+    std::array<cgp::mesh_drawable, 4> wheel_rim_drawables;
 	cgp::mesh_drawable ground;
 
 	// ****************************** //
