@@ -17,8 +17,8 @@ float clamp_value(float value, float min_value, float max_value)
 
 car_structure::car_structure()
 {
-    throttle_input = 0.0f;
-    steering_input = 0.0f;
+    throttle_input = 0;
+    steering_input = 0;
     steering_angle = 0.0f;
     angular_speed = 0.0f;
     wheel_spin_angle = 0.0f;
@@ -44,7 +44,7 @@ float car_structure::lateral_speed() const
 
 void car_structure::update(float dt)
 {
-    if (std::abs(steering_input) > 1e-5f)
+    if (steering_input != 0)
         steering_angle += steering_input * steering_speed * dt;
     else
         steering_angle = approach_zero(steering_angle, steering_return_speed * dt);
@@ -80,17 +80,17 @@ void car_structure::action_keyboard(input_devices* inputs, window_structure* win
     assert_cgp_no_msg(inputs != nullptr);
     assert_cgp_no_msg(window != nullptr);
 
-    throttle_input = 0.0f;
+    throttle_input = 0;
     if (inputs->keyboard.up)
-        throttle_input += 1.0f;
+        throttle_input += 1;
     if (inputs->keyboard.down)
-        throttle_input -= 1.0f;
+        throttle_input -= 1;
 
-    steering_input = 0.0f;
+    steering_input = 0;
     if (inputs->keyboard.left)
-        steering_input += 1.0f;
+        steering_input += 1;
     if (inputs->keyboard.right)
-        steering_input -= 1.0f;
+        steering_input -= 1;
 }
 
 

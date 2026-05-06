@@ -3,7 +3,7 @@
 #include "cgp/cgp.hpp"
 #include "environment.hpp"
 #include "car/car.hpp"
-#include "car/car_texture.hpp"
+#include "terrain.hpp"
 #include <array>
 
 using cgp::mesh_drawable;
@@ -26,7 +26,7 @@ struct scene_structure : cgp::scene_inputs_generic {
 	void display_info();
 
 	void display_car(float dt);
-	void position_camera();
+	void position_camera(float dt);
 
 	// ****************************** //
 	// Context
@@ -45,6 +45,11 @@ struct scene_structure : cgp::scene_inputs_generic {
 	camera_projection_perspective camera_projection;
 
 	vec3 distance_from_car;
+	vec3 camera_smoothed_direction;
+	vec3 camera_smoothed_position;
+	bool camera_follow_initialized = false;
+	float camera_direction_response = 5.0f;
+	float camera_position_response = 8.0f;
 
 	// ****************************** //
 	// Elements and shapes of the scene
@@ -53,11 +58,14 @@ struct scene_structure : cgp::scene_inputs_generic {
 	mesh_drawable global_frame;          // The standard global frame
 	
 	car_structure car;
+	terrain_structure terrain;
 
 	cgp::mesh_drawable car_drawable;
     std::array<cgp::mesh_drawable, 4> wheel_tire_drawables;
     std::array<cgp::mesh_drawable, 4> wheel_rim_drawables;
 	cgp::mesh_drawable ground;
+	cgp::mesh_drawable asphalt;
+	cgp::mesh_drawable barrier;
 
 	// ****************************** //
 	// Callback functions

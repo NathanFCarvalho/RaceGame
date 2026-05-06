@@ -7,7 +7,7 @@ project(project
 )
 
 # Collect sources automatically (src + cgp library + shaders)
-file(GLOB_RECURSE SRC_FILES
+file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_LIST_DIR}/src/*.[ch]pp"
     "${CMAKE_CURRENT_LIST_DIR}/cgp/*.[ch]pp"
     "${CMAKE_CURRENT_LIST_DIR}/shaders/*.glsl"

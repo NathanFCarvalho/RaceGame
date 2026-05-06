@@ -11,8 +11,8 @@ struct car_structure {
 	vec3 normal;
 	vec3 facing_direction;
 
-	float throttle_input;
-	float steering_input;
+	int throttle_input;
+	int steering_input;
 
 	float wheel_acceleration;
 	float steering_angle;
@@ -28,6 +28,9 @@ struct car_structure {
 	float wheel_base = 5.0f;
 	float drag_factor = 0.5f;
 	float lateral_drag_factor = 3.5f;
+	
+    float collision_half_length = 0.0f;
+    float collision_half_width = 0.0f;
 
 	car_structure();
 	void update(float dt);
