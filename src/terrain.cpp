@@ -1,9 +1,7 @@
 #include "terrain.hpp"
-#include "car/car.hpp"
+#include "utils.hpp"
 
 using namespace cgp;
-
-namespace {
 
 float track_parameter(int ku, int N)
 {
@@ -16,25 +14,17 @@ vec3 horizontal_normal(vec3 const& tangent)
     return normalize(vec3{-flat_tangent.z, 0.0f, flat_tangent.x});
 }
 
-float clamp_value(float value, float min_value, float max_value)
-{
-    return std::max(min_value, std::min(value, max_value));
-}
-
 float squared_norm_xz(vec3 const& value)
 {
     return value.x * value.x + value.z * value.z;
 }
 
-}
-
 vec3 terrain_structure::track_centerline(float u) const
 {
-    float const radius = 40.0f;
     return {
-        radius * std::cos(u),
+        track_radius * std::cos(u),
         0.0f,
-        radius * std::sin(u) - radius
+        track_radius * std::sin(u) - track_radius
     };
 }
 
@@ -62,34 +52,51 @@ track_projection terrain_structure::closest_track_projection(vec3 const& point) 
 
         if (distance_sq < best_distance) {
             vec3 const side = horizontal_normal(ab);
+            vec3 const previous = track_centerline(track_parameter((ku - 1 + N) % N, N));
+            vec3 const next = track_centerline(track_parameter((ku + 2) % N, N));
+            vec3 const previous_tangent = normalize(vec3{a.x - previous.x, 0.0f, a.z - previous.z});
+            vec3 const next_tangent = normalize(vec3{next.x - b.x, 0.0f, next.z - b.z});
+            float const tangent_angle = std::atan2(
+                dot(cross(previous_tangent, next_tangent), vec3{0.0f, 1.0f, 0.0f}),
+                dot(previous_tangent, next_tangent));
+            float const segment_length = std::sqrt(ab_length_sq);
 
             best_distance = distance_sq;
             best.point = projection;
+            best.tangent_direction = normalize(vec3{ab.x, 0.0f, ab.z});
             best.side_direction = side;
+            best.u = std::fmod(u + t * 2.0f * Pi / N, 2.0f * Pi);
             best.lateral_distance = dot(point - projection, side);
+            best.signed_curvature = tangent_angle / std::max(segment_length, 1e-5f);
         }
     }
 
     return best;
 }
 
-void terrain_structure::resolve_collision(car_structure& car) const
+cgp::vec3 terrain_structure::track_point_ahead(track_projection const& projection, float lookahead_distance) const
+{
+    float const ahead_u = projection.u + lookahead_distance / track_radius;
+    return track_centerline(ahead_u);
+}
+
+void terrain_structure::resolve_collision(car& car) const
 {
     float const half_track_width = 0.5f * track_width;
-    float const wall_friction = 0.85f;
 
     vec3 const forward = normalize(car.facing_direction);
     vec3 const right = normalize(cross(car.normal, forward));
 
+    float half_length = car.dimensions.collision_half_length;
     std::array<vec3, 8> const hitbox_samples = {{
-        car.collision_half_length * forward + car.collision_half_width * right,
-        car.collision_half_length * forward - car.collision_half_width * right,
-        -car.collision_half_length * forward + car.collision_half_width * right,
-        -car.collision_half_length * forward - car.collision_half_width * right,
-        car.collision_half_length * forward,
-        -car.collision_half_length * forward,
-        car.collision_half_width * right,
-        -car.collision_half_width * right,
+        half_length * forward + half_length * right,
+        half_length * forward - half_length * right,
+        -half_length * forward + half_length * right,
+        -half_length * forward - half_length * right,
+        half_length * forward,
+        -half_length * forward,
+        half_length * right,
+        -half_length * right,
     }};
 
     for (int iteration = 0; iteration < 2; ++iteration) {
@@ -101,20 +108,21 @@ void terrain_structure::resolve_collision(car_structure& car) const
             if (lateral_abs <= half_track_width)
                 continue;
 
-            float const penetration = lateral_abs - half_track_width;
             float const side_sign = projection.lateral_distance >= 0.0f ? 1.0f : -1.0f;
             vec3 const wall_normal = -side_sign * projection.side_direction;
 
-            car.position += penetration * wall_normal;
-
             float const normal_speed = dot(car.velocity, wall_normal);
             if (normal_speed < 0.0f)
-                car.velocity -= normal_speed * wall_normal;
+                car.velocity -= 2 * normal_speed * wall_normal;
 
             car.velocity *= wall_friction;
         }
     }
 }
+
+/**************************
+ Mesh definition
+ **************************/
 
 mesh terrain_structure::create_asphalt_mesh() const
 {
