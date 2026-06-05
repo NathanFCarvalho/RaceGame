@@ -30,12 +30,50 @@ float squared_norm_xz(vec3 const& value)
 
 vec3 terrain_structure::track_centerline(float u) const
 {
-    float const radius = 40.0f;
-    return {
-        radius * std::cos(u),
-        0.0f,
-        radius * std::sin(u) - radius
-    };
+    float const t = u / (2.0f * Pi); //remap
+
+    constexpr int NP = 26;
+	//               0,     1,   1.1,    2,    3,    4,    5,    6,    7,    8,   9,  10,   11,  12,   13,   14,  15,   16,   17, 18,   19,   20,   21,   22,   23,  24
+    float px[NP] = { 0,    13,  13.1, 12.2, 13.5, 17.5, 18.5, 20.5, 21.2, 23.3,  26,  29, 30.5,  40, 45.8, 15.1,  17, 15.1, 14.9, 14, 13.8, 14.4, 13.5, 11.5,  9.2, 6.3 };
+    float pz[NP] = { 0, -11.8, -11.7,   -7, -5.2, -3.2, -1.6,   -1,  1.8,  2.4, 0.8, 2.9,  1.6, 2.2,  8.2,    6, 1.5,  1.6,  2.5,  4,  4.1, -0.4,   -2, -2.8, -2.1, 2.2 };
+
+	constexpr float multiplier = 20.0f;
+
+
+	for (int i = 0; i < NP; ++i) {  
+        px[i] *= multiplier;
+        pz[i] *= - multiplier;
+    }
+
+    float const ft = t * NP;
+    int   const i0 = static_cast<int>(ft) % NP;
+    float const s = ft - static_cast<int>(ft);      
+
+    int const im1 = (i0 - 1 + NP) % NP;
+    int const i1 = (i0 + 1) % NP;
+    int const i2 = (i0 + 2) % NP;
+
+    float const alpha = 0.5;    
+    float const t0 = 0;
+    float const t1 = pow(std::sqrt((px[i0] - px[im1]) * (px[i0] - px[im1]) + (pz[i0] - pz[im1]) * (pz[i0] - pz[im1])), alpha);
+    float const t2 = t1 + pow(std::sqrt((px[i1] - px[i0]) * (px[i1] - px[i0]) + (pz[i1] - pz[i0]) * (pz[i1] - pz[i0])), alpha);
+    float const t3 = t2 + pow(std::sqrt((px[i2] - px[i1]) * (px[i2] - px[i1]) + (pz[i2] - pz[i1]) * (pz[i2] - pz[i1])), alpha);
+	float const s_scaled = s * (t2 - t1) + t1;
+
+    auto interpolation = [&](float p0, float p1, float p2, float p3) -> float { // Catmu0ll-Rom
+		float const a0 = (t1 - s_scaled) * p0 / (t1 - t0) + (s_scaled - t0) * p1 / (t1 - t0);
+		float const a1 = (t2 - s_scaled) * p1 / (t2 - t1) + (s_scaled - t1) * p2 / (t2 - t1);
+		float const a2 = (t3 - s_scaled) * p2 / (t3 - t2) + (s_scaled - t2) * p3 / (t3 - t2);
+
+		float const b0 = (t2 - s_scaled) * a0 / (t2 - t0) + (s_scaled - t0) * a1 / (t2 - t0);
+		float const b1 = (t3 - s_scaled) * a1 / (t3 - t1) + (s_scaled - t1) * a2 / (t3 - t1);
+
+		return (t2 - s_scaled) * b0 / (t2 - t1) + (s_scaled - t1) * b1 / (t2 - t1);
+        };
+
+    return { interpolation(px[im1], px[i0], px[i1], px[i2]),
+             0.0f,
+             interpolation(pz[im1], pz[i0], pz[i1], pz[i2]) };
 }
 
 track_projection terrain_structure::closest_track_projection(vec3 const& point) const

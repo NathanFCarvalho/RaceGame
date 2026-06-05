@@ -132,6 +132,13 @@ void scene_structure::display_car(float dt)
 
 void scene_structure::position_camera(float dt)
 {
+    if (gui.top_view) {
+		vec3 const top_position = vec3{ 0.0f, 720.0f, 25.0f };
+        vec3 const track_center = vec3{ 0.0f, 0.0f,   25.0f };
+        camera_control.look_at(top_position, track_center, { 0, 0, 1 });
+        return;
+    }
+
     vec3 target_direction = normalize(car.facing_direction);
     float const speed = norm(car.velocity);
 
@@ -186,6 +193,7 @@ void scene_structure::display_frame()
 void scene_structure::display_gui()
 {
 	ImGui::Checkbox("Frame", &gui.display_frame);
+	ImGui::Checkbox("Top View", &gui.top_view);
 
     if (ImGui::CollapsingHeader("Car Debug", ImGuiTreeNodeFlags_DefaultOpen)) {
         float const forward_speed = car.forward_speed();
