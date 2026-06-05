@@ -2,7 +2,7 @@
 
 #include "cgp/cgp.hpp"
 #include "environment.hpp"
-#include "car/car.hpp"
+#include "car.hpp"
 #include "terrain.hpp"
 #include <array>
 
@@ -26,8 +26,8 @@ struct scene_structure : cgp::scene_inputs_generic {
 	void display_gui();
 	void display_info();
 
-	void display_car(float dt);
-	void position_camera(float dt);
+	void display_car(car const& car, cgp::vec3 const& color);
+	void position_camera();
 
 	// ****************************** //
 	// Context
@@ -45,20 +45,16 @@ struct scene_structure : cgp::scene_inputs_generic {
 	camera_controller_orbit_euler camera_control;
 	camera_projection_perspective camera_projection;
 
-	vec3 distance_from_car;
-	vec3 camera_smoothed_direction;
-	vec3 camera_smoothed_position;
-	bool camera_follow_initialized = false;
-	float camera_direction_response = 5.0f;
-	float camera_position_response = 8.0f;
-
 	// ****************************** //
 	// Elements and shapes of the scene
 	// ****************************** //
 	timer_basic timer;
 	mesh_drawable global_frame;          // The standard global frame
 	
-	car_structure car;
+	car_structure car_base;
+	player_car player;
+	adversary_car adversary;
+
 	terrain_structure terrain;
 
 	cgp::mesh_drawable car_drawable;
