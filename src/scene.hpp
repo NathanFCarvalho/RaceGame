@@ -3,6 +3,7 @@
 #include "cgp/cgp.hpp"
 #include "environment.hpp"
 #include "car.hpp"
+#include "landscape.hpp"
 #include "terrain.hpp"
 #include <array>
 #include <vector>
@@ -13,6 +14,7 @@ struct gui_parameters {
 	bool display_frame = true;
 	bool display_pines = true;
 	bool top_view = false;
+    bool display_mountains = true;
 };
 
 // The structure of the custom scene
@@ -58,6 +60,7 @@ struct scene_structure : cgp::scene_inputs_generic {
 	std::vector<adversary_car> adversaries;
 
 	terrain_structure terrain;
+    mountains terrain_mountains;
 
 	cgp::skybox_drawable skybox;
 	cgp::mesh_drawable car_drawable;

@@ -54,6 +54,8 @@ void scene_structure::initialize()
     // Camera initialization
 	camera_control.initialize(inputs, window); // Give access to the inputs and window global state to the camera controler
 	camera_control.set_rotation_axis_y();
+    camera_projection.depth_min = 0.1f;
+    camera_projection.depth_max = 3000.0f;
     player.camera.position_camera(1.0f, player.facing_direction, player.position, player.normal);
 	position_camera();
 
@@ -84,6 +86,12 @@ void scene_structure::initialize()
     barrier.model.translation = {0.0f, -0.5f, 0.0f};
     barrier.material.color = {1.0f, 1.0f, 1.0f};
     barrier.material.phong = {0.35f, 0.45f, 0.0f, 1.0f};
+
+    mountains_parameters mountains_settings;
+    mountains_settings.horizon_radius = 850.0f;
+    mountains_settings.horizon_width = 140.0f;
+    mountains_settings.mean_height = 85.0f;
+    terrain_mountains.initialize(terrain, mountains_settings);
 
     // Car initialization
 	car_drawable.initialize_data_on_gpu(mesh_primitive_cube({0.0f, 0.0f, 0.0f}, player.dimensions.length));
@@ -193,6 +201,9 @@ void scene_structure::display_frame()
     }
 	
 	draw(ground, environment);
+    if (gui.display_mountains) {
+        terrain_mountains.display(environment);
+    }
     draw(asphalt, environment);
     draw(barrier, environment);
 
@@ -247,6 +258,10 @@ void scene_structure::display_gui()
 {
 	ImGui::Checkbox("Frame", &gui.display_frame);
 	ImGui::Checkbox("Top View", &gui.top_view);
+
+    if (ImGui::CollapsingHeader("Scenario", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Checkbox("Mountains", &gui.display_mountains);
+    }
 
     if (ImGui::CollapsingHeader("Car Debug", ImGuiTreeNodeFlags_DefaultOpen)) {
         float const forward_speed = player.forward_speed();
