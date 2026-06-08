@@ -47,20 +47,26 @@ cgp::mesh car_structure::create_wheel_rim_mesh() const
  **************************/
 
 car::car()
-{
+{    
+    idx = 0;
+    in_colision = false;
+
     // Movement variables (car starts at rest)
     wheel_acceleration = 0.0f;
     steering_angle = 0.0f;
     angular_speed = 0.0f;
+    collision_angular_speed = 0.0f;
     wheel_spin_angle = 0.0f;
+    throttle_input = 0;
+    steering_input = 0;
 
     position = {0.0f, 0.0f, 0.0f};
 	velocity = {0.0f, 0.0f, 0.0f};
 	acceleration = {0.0f, 0.0f, 0.0f};
 
-    // Car starts in xz plan facing the x axis
+    // Default placement; scene-specific placement can override position and direction.
     normal = {0.0f, 1.0f, 0.0f};
-    facing_direction = {-1.0f, 0.0f, 0.0f};
+    facing_direction = {-0.0f, 0.0f, 1.0f};
 }
 
 void car::update(float dt)
@@ -95,6 +101,13 @@ void car::update(float dt)
         facing_direction = normalize(yaw_rotation * facing_direction);
     }
 
+    if (std::abs(collision_angular_speed) > 1e-5f) {
+        rotation_transform const collision_rotation =
+            rotation_transform::from_axis_angle(up, collision_angular_speed * dt);
+        facing_direction = normalize(collision_rotation * facing_direction);
+        collision_angular_speed *= std::exp(-2.5f * dt);
+    }
+
     velocity += acceleration * dt;
     wheel_spin_angle += updated_forward_speed * dt / dimensions.wheel_radius;
     position += velocity * dt;
@@ -113,6 +126,25 @@ float car::lateral_speed() const
     vec3 const right = normalize_or(cross(up, forward), {0.0f, 0.0f, -1.0f});
     return dot(velocity, right);
 }
+
+std::array<vec3, 4> car::get_hitbox_samples() const
+{
+    float half_length = dimensions.collision_half_length;
+    float half_width = dimensions.collision_half_width;
+    vec3 const forward = normalize_or(facing_direction, {1.0f, 0.0f, 0.0f});
+    vec3 const up = normalize_or(normal, {0.0f, 1.0f, 0.0f});
+    vec3 const right = normalize_or(cross(up, forward), {0.0f, 0.0f, -1.0f});
+
+    std::array<vec3, 4> const hitbox_samples = {{
+        half_length * forward + half_width * right,
+        half_length * forward - half_width * right,
+        -half_length * forward + half_width * right,
+        -half_length * forward - half_width * right,
+    }};
+
+    return hitbox_samples;
+}
+
 
 /**************************
  Player movement definition
@@ -170,3 +202,114 @@ void adversary_car::follow_target(vec3 const& target_position)
     if (target_steering_angle < steering_angle - steering_dead_zone)
         steering_input = -1;
 }
+
+/**************************
+ Car colision definition
+ **************************/
+
+bool is_inside_hitbox(vec3 const& point, car const& vehicle)
+{
+    vec3 const forward = normalize_or(vehicle.facing_direction, {1.0f, 0.0f, 0.0f});
+    vec3 const up = normalize_or(vehicle.normal, {0.0f, 1.0f, 0.0f});
+    vec3 const right = normalize_or(cross(up, forward), {0.0f, 0.0f, -1.0f});
+    vec3 const relative_position = point - vehicle.position;
+
+    float const local_forward = dot(relative_position, forward);
+    float const local_right = dot(relative_position, right);
+
+    return std::abs(local_forward) <= vehicle.dimensions.collision_half_length
+        && std::abs(local_right) <= vehicle.dimensions.collision_half_width;
+}
+
+bool hitboxes_overlap(car const& first, car const& second, vec3& contact_point)
+{
+    for (vec3 const& hitbox_sample : first.get_hitbox_samples()) {
+        vec3 const world_sample = first.position + hitbox_sample;
+        if (is_inside_hitbox(world_sample, second)) {
+            contact_point = world_sample;
+            return true;
+        }
+    }
+
+    for (vec3 const& hitbox_sample : second.get_hitbox_samples()) {
+        vec3 const world_sample = second.position + hitbox_sample;
+        if (is_inside_hitbox(world_sample, first)) {
+            contact_point = world_sample;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+vec3 collision_normal(car const& first, car const& second)
+{
+    vec3 const center_direction = first.position - second.position;
+    if (norm(center_direction) > 1e-5f)
+        return normalize(center_direction);
+
+    return normalize_or(first.velocity - second.velocity, first.facing_direction);
+}
+
+void add_collision_spin(car& vehicle, vec3 const& contact_point, vec3 const& impulse)
+{
+    vec3 const up = normalize_or(vehicle.normal, {0.0f, 1.0f, 0.0f});
+    vec3 const contact_offset = contact_point - vehicle.position;
+    float const torque = dot(cross(contact_offset, impulse), up);
+    float const half_length = vehicle.dimensions.collision_half_length;
+    float const half_width = vehicle.dimensions.collision_half_width;
+    float const inertia = std::max(half_length * half_length + half_width * half_width, 1e-3f);
+    float constexpr spin_response = 0.35f;
+
+    vehicle.collision_angular_speed += spin_response * torque / inertia;
+    vehicle.collision_angular_speed = clamp_value(vehicle.collision_angular_speed, -8.0f, 8.0f);
+}
+
+void resolve_elastic_collision(car& first, car& second, vec3 const& contact_point)
+{
+    vec3 const normal = collision_normal(first, second);
+    vec3 const relative_velocity = first.velocity - second.velocity;
+    float const normal_relative_speed = dot(relative_velocity, normal);
+
+    if (normal_relative_speed >= 0.0f)
+        return;
+
+    float constexpr restitution = 1.0f;
+    float constexpr inverse_mass = 1.0f;
+    float const impulse_magnitude =
+        -(1.0f + restitution) * normal_relative_speed / (inverse_mass + inverse_mass);
+    vec3 const impulse = impulse_magnitude * normal;
+
+    first.velocity += inverse_mass * impulse;
+    second.velocity -= inverse_mass * impulse;
+    add_collision_spin(first, contact_point, impulse);
+    add_collision_spin(second, contact_point, -impulse);
+}
+
+void player_car::verify_collisions(std::vector<car*> const& cars)
+{
+    for (car* vehicle : cars) {
+        if (vehicle != nullptr)
+            vehicle->in_colision = false;
+    }
+
+    for (size_t first_index = 0; first_index < cars.size(); ++first_index) {
+        car* first = cars[first_index];
+        if (first == nullptr)
+            continue;
+
+        for (size_t second_index = first_index + 1; second_index < cars.size(); ++second_index) {
+            car* second = cars[second_index];
+            if (second == nullptr)
+                continue;
+
+            vec3 contact_point;
+            if (!hitboxes_overlap(*first, *second, contact_point))
+                continue;
+
+            resolve_elastic_collision(*first, *second, contact_point);
+            first->in_colision = true;
+            second->in_colision = true;
+        }
+    }
+} 

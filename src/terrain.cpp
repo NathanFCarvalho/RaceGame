@@ -30,7 +30,6 @@ vec3 terrain_structure::track_centerline(float u) const
 
 	constexpr float multiplier = 20.0f;
 
-
 	for (int i = 0; i < NP; ++i) {  
         px[i] *= multiplier;
         pz[i] *= - multiplier;
@@ -123,20 +122,7 @@ void terrain_structure::resolve_collision(car& car) const
 {
     float const half_track_width = 0.5f * track_width;
 
-    vec3 const forward = normalize(car.facing_direction);
-    vec3 const right = normalize(cross(car.normal, forward));
-
-    float half_length = car.dimensions.collision_half_length;
-    std::array<vec3, 8> const hitbox_samples = {{
-        half_length * forward + half_length * right,
-        half_length * forward - half_length * right,
-        -half_length * forward + half_length * right,
-        -half_length * forward - half_length * right,
-        half_length * forward,
-        -half_length * forward,
-        half_length * right,
-        -half_length * right,
-    }};
+    std::array<vec3, 4> const hitbox_samples = car.get_hitbox_samples();
 
     for (int iteration = 0; iteration < 2; ++iteration) {
         for (vec3 const& hitbox_sample : hitbox_samples) {

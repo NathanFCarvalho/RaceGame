@@ -6,15 +6,51 @@ using namespace cgp;
 namespace {
 constexpr bool enable_adversary = true;
 constexpr bool camera_follows_adversary = false;
+constexpr bool enable_skybox = true;
+constexpr int adversary_car_count = 2;
+constexpr float startline_u = 0.0f;
+constexpr float track_spawn_du = 0.001f;
 
 void display_vec3_debug(char const* label, vec3 const& value)
 {
     ImGui::Text("%s: (%.3f, %.3f, %.3f)", label, value.x, value.y, value.z);
 }
+
+cgp::vec3 startline_target(terrain_structure const& terrain)
+{
+    vec3 const tangent = terrain.track_centerline(startline_u + track_spawn_du)
+        - terrain.track_centerline(startline_u - track_spawn_du);
+    return normalize_or(vec3{tangent.x, 0.0f, tangent.z}, {1.0f, 0.0f, 0.0f});
+}
+
+cgp::vec3 lateral_normal_from_target(vec3 const& target)
+{
+    return normalize_or(vec3{-target.z, 0.0f, target.x}, {0.0f, 0.0f, 1.0f});
+}
+
+float adversary_lateral_offset(size_t adversary_index)
+{
+    float constexpr spacing = 0.9f;
+    float const side = adversary_index % 2 == 0 ? 1.0f : -1.0f;
+    float const rank = 1.0f + static_cast<float>(adversary_index / 2);
+    return side * rank * spacing;
+}
 }
 
 void scene_structure::initialize()
 {
+    initialize_car_on_track(player);
+
+    adversaries.resize(enable_adversary ? adversary_car_count : 0);
+    vec3 const player_lateral_normal = lateral_normal_from_target(player.facing_direction);
+    for (size_t k = 0; k < adversaries.size(); ++k) {
+        adversary_car& adversary = adversaries[k];
+        adversary.idx = static_cast<int>(k) + 1;
+        adversary.position = player.position
+            + adversary_lateral_offset(k) * player_lateral_normal;
+        adversary.facing_direction = normalize_or(player.facing_direction, {1.0f, 0.0f, 0.0f});
+    }
+
     // Camera initialization
 	camera_control.initialize(inputs, window); // Give access to the inputs and window global state to the camera controler
 	camera_control.set_rotation_axis_y();
@@ -25,6 +61,16 @@ void scene_structure::initialize()
     
 	global_frame.initialize_data_on_gpu(mesh_primitive_frame());
 
+    // Skybox initialization.
+    if (enable_skybox) {
+        image_structure image_skybox_template = image_load_file(project::path+"assets/skybox_02.jpg");
+        std::vector<image_structure> image_grid = image_split_grid(image_skybox_template, 4, 3);
+
+        skybox.vao = 0;
+        skybox.initialize_data_on_gpu();
+        skybox.texture.initialize_cubemap_on_gpu(image_grid[1], image_grid[7], image_grid[5], image_grid[3], image_grid[10], image_grid[4]);
+    }
+   
     // Asphalt initialization
     mesh asphalt_mesh = terrain.create_asphalt_mesh();
     asphalt.initialize_data_on_gpu(asphalt_mesh);
@@ -40,7 +86,7 @@ void scene_structure::initialize()
     barrier.material.phong = {0.35f, 0.45f, 0.0f, 1.0f};
 
     // Car initialization
-	car_drawable.initialize_data_on_gpu(mesh_primitive_cube(player.position, player.dimensions.length));
+	car_drawable.initialize_data_on_gpu(mesh_primitive_cube({0.0f, 0.0f, 0.0f}, player.dimensions.length));
 	car_drawable.material.color = {0.8f, 0.15f, 0.1f};
 
     // Wheel tire initialization
@@ -59,6 +105,18 @@ void scene_structure::initialize()
         rim.material.color = {1.0f, 1.0f, 1.0f};
         rim.material.phong = {0.4f, 0.6f, 0.0f, 1.0f};
     }
+
+    player.idx = 0;
+}
+
+void scene_structure::initialize_car_on_track(car& vehicle, float lateral_offset)
+{
+    vec3 const center = terrain.track_centerline(startline_u);
+    vec3 const target = startline_target(terrain);
+    vec3 const lateral_normal = lateral_normal_from_target(target);
+
+    vehicle.position = center + lateral_offset * lateral_normal;
+    vehicle.facing_direction = target;
 }
 
 void scene_structure::display_car(car const& player, vec3 const& color)
@@ -109,10 +167,8 @@ void scene_structure::position_camera()
         return;
     }
 
-    vec3 target_direction = normalize(car.facing_direction);
-    float const speed = norm(car.velocity);
-
-    if (camera_follows_adversary) {
+    if (camera_follows_adversary && !adversaries.empty()) {
+        adversary_car const& adversary = adversaries.front();
         camera_control.look_at(adversary.position - 3.0f*adversary.facing_direction + 1.0f*adversary.normal, /* position of the camera in the 3D scene */
                         adversary.position,  /* targeted point in 3D scene */
                         {0,0,1} /* direction of the "up" vector */);
@@ -129,6 +185,12 @@ void scene_structure::display_frame()
 	environment.camera_projection = camera_projection.matrix();
 	environment.camera_view = camera_control.camera_model.matrix_view();
 	environment.light = camera_control.camera_model.position();
+
+    if(enable_skybox){
+        glDepthMask(GL_FALSE);
+        draw(skybox, environment);
+        glDepthMask(GL_TRUE);
+    }
 	
 	draw(ground, environment);
     draw(asphalt, environment);
@@ -143,23 +205,40 @@ void scene_structure::display_frame()
     player.update(dt);
     player.position_camera(dt);
 
-    if (enable_adversary) {
+    bool const race_started = player.throttle_input != 0 || norm(player.velocity) > 0.1f;
+    for (adversary_car& adversary : adversaries) {
         terrain.resolve_collision(adversary);
 
-        track_projection const proj = terrain.closest_track_projection(adversary.position);
-        vec3 const target = terrain.track_point_ahead(proj, adversary.lookahead_distance);
-        adversary.follow_target(target);
+        if (race_started) {
+            track_projection const proj = terrain.closest_track_projection(adversary.position);
+            vec3 const target = terrain.track_point_ahead(proj, adversary.lookahead_distance);
+            adversary.follow_target(target);
+        }
+        else {
+            adversary.throttle_input = 0;
+            adversary.steering_input = 0;
+            adversary.facing_direction = player.facing_direction;
+        }
 
         adversary.update(dt);
     }
 
-    if (camera_follows_adversary && enable_adversary)
+    std::vector<car*> cars;
+    cars.reserve(1 + adversaries.size());
+    cars.push_back(&player);
+    for (adversary_car& adversary : adversaries)
+        cars.push_back(&adversary);
+    player.verify_collisions(cars);
+
+    if (camera_follows_adversary && !adversaries.empty()) {
+        adversary_car& adversary = adversaries.front();
         player.camera.position_camera(dt, adversary.facing_direction, adversary.position, adversary.normal);
+    }
     else
         player.camera.position_camera(dt, player.facing_direction, player.position, player.normal);
 
 	display_car(player, {0.1f, 0.25f, 0.85f});
-    if (enable_adversary)
+    for (adversary_car const& adversary : adversaries)
         display_car(adversary, {0.1f, 0.25f, 0.1f});
     position_camera();
 }
@@ -190,6 +269,7 @@ void scene_structure::display_gui()
         ImGui::Text("Angular speed: %.3f rad/s", player.angular_speed);
         ImGui::Text("Wheel spin rate: %.3f rad/s", wheel_spin_rate);
         ImGui::Text("Wheel spin angle: %.3f rad", player.wheel_spin_angle);
+        ImGui::Text("In collision %d", player.in_colision);
         ImGui::Separator();
         display_vec3_debug("Velocity", player.velocity);
         display_vec3_debug("Acceleration", player.acceleration);

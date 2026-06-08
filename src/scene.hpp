@@ -5,6 +5,7 @@
 #include "car.hpp"
 #include "terrain.hpp"
 #include <array>
+#include <vector>
 
 using cgp::mesh_drawable;
 
@@ -28,6 +29,7 @@ struct scene_structure : cgp::scene_inputs_generic {
 
 	void display_car(car const& car, cgp::vec3 const& color);
 	void position_camera();
+	void initialize_car_on_track(car& car, float lateral_offset = 0.0f);
 
 	// ****************************** //
 	// Context
@@ -53,10 +55,11 @@ struct scene_structure : cgp::scene_inputs_generic {
 	
 	car_structure car_base;
 	player_car player;
-	adversary_car adversary;
+	std::vector<adversary_car> adversaries;
 
 	terrain_structure terrain;
 
+	cgp::skybox_drawable skybox;
 	cgp::mesh_drawable car_drawable;
     std::array<cgp::mesh_drawable, 4> wheel_tire_drawables;
     std::array<cgp::mesh_drawable, 4> wheel_rim_drawables;
