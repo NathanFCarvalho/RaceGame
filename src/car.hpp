@@ -7,8 +7,8 @@ using namespace cgp;
 
 struct car_structure {
 	// Car dimension constants
-	float length = 0.5f;
-	float width = 0.5f;
+	float length = 1.90f;
+	float width = 0.90f;
 	float wheel_radius = 0.18f;
 	float wheel_base = 3.0f; 
 
@@ -32,7 +32,7 @@ struct movement_contants {
 	float steering_speed = 0.4f;
 	float max_steering_angle = 0.55f;
 	float steering_return_speed = 0.2f;
-    float acceleration_value = 10.0f;
+    float acceleration_value = 5.0f;
 
 	// Drag constants
 	float drag_factor = 0.5f;
@@ -106,7 +106,7 @@ struct player_car : car {
 struct adversary_car : car {
 	float lookahead_distance = 0.5f;
 	float heading_gain = 1.4f;
-    float adversary_target_speed = 10.0f;
+    float adversary_target_speed = 20.0f;
     float min_corner_speed_ratio = 0.55f;
     float steering_dead_zone = 0.03f;
 

@@ -13,7 +13,8 @@ struct track_projection {
 };
 
 struct terrain_structure {
-    int N = 500;
+    int N = 1000;
+    int map_id = 0;
     float track_width = 10.0f;
     float track_radius = 40.0f;
     float barrier_height = 0.4f;
