@@ -16,15 +16,6 @@ struct gui_parameters {
 	bool top_view = false;
 };
 
-struct smoke_particle {
-	cgp::vec3 position;
-	cgp::vec3 velocity;
-	float age = 0.0f;
-	float lifetime = 1.6f;
-	float start_size = 0.5f;
-	float end_size = 2.4f;
-};
-
 // The structure of the custom scene
 struct scene_structure : cgp::scene_inputs_generic {
 
@@ -44,10 +35,10 @@ struct scene_structure : cgp::scene_inputs_generic {
 	void initialize_track_drawables();
 	void reset_race_start();
 	void display_start_menu();
-	void emit_smoke(float dt);
-	void apply_player_boost(float dt);
-	void update_smoke(float dt);
-	void draw_smoke();
+	void start_countdown();
+	void update_countdown(float dt);
+	void display_countdown_overlay();
+	void update_adversary_control(adversary_car& adversary, bool race_started);
 
 	// ****************************** //
 	// Context
@@ -74,10 +65,12 @@ struct scene_structure : cgp::scene_inputs_generic {
 	car_structure car_base;
 	player_car player;
 	std::vector<adversary_car> adversaries;
+	std::vector<cgp::vec3> adversary_colors;
 
 	terrain_structure terrain;
 	bool game_started = false;
-	int selected_map = 0;
+	bool race_active = false;
+	float countdown_time = 0.0f;
 	cgp::vec3 player_color = {0.1f, 0.25f, 0.85f};
 
 	cgp::skybox_drawable skybox;
@@ -86,9 +79,6 @@ struct scene_structure : cgp::scene_inputs_generic {
     std::array<cgp::mesh_drawable, 4> wheel_tire_drawables;
     std::array<cgp::mesh_drawable, 4> wheel_rim_drawables;
 	cgp::mesh_drawable hitbox_point_drawable;
-	cgp::mesh_drawable smoke_drawable;
-	std::vector<smoke_particle> smoke_particles;
-	float smoke_spawn_accumulator = 0.0f;
 	cgp::mesh_drawable ground;
 	cgp::mesh_drawable asphalt;
 	cgp::mesh_drawable barrier;

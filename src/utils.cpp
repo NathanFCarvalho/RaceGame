@@ -26,3 +26,8 @@ cgp::vec3 normalize_or(cgp::vec3 const& value, cgp::vec3 const& fallback)
 
     return {1.0f, 0.0f, 0.0f};
 }
+
+void display_vec3_debug(char const* label, cgp::vec3 const& value)
+{
+    ImGui::Text("%s: (%.3f, %.3f, %.3f)", label, value.x, value.y, value.z);
+}

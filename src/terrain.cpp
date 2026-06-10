@@ -3,22 +3,26 @@
 
 using namespace cgp;
 
+/** Convert a sample index on the track mesh into an angular parameter in [0, 2*pi). */
 float track_parameter(int ku, int N)
 {
     return 2.0f * Pi * ku / N;
 }
 
+/** Return a horizontal normal vector perpendicular to a track tangent. */
 vec3 horizontal_normal(vec3 const& tangent)
 {
     vec3 const flat_tangent = normalize(vec3{tangent.x, 0.0f, tangent.z});
     return normalize(vec3{-flat_tangent.z, 0.0f, flat_tangent.x});
 }
 
+/** Compute squared distance using only x/z coordinates. */
 float squared_norm_xz(vec3 const& value)
 {
     return value.x * value.x + value.z * value.z;
 }
 
+/** Evaluate the current map centerline at parameter u. */
 vec3 terrain_structure::track_centerline(float u) const
 {
     if (map_id == 1) {
@@ -77,6 +81,7 @@ vec3 terrain_structure::track_centerline(float u) const
              interpolation(pz[im1], pz[i0], pz[i1], pz[i2]) };
 }
 
+/** Project a world-space point onto the closest sampled segment of the track centerline. */
 track_projection terrain_structure::closest_track_projection(vec3 const& point) const
 {
     track_projection best;
@@ -123,12 +128,27 @@ track_projection terrain_structure::closest_track_projection(vec3 const& point) 
     return best;
 }
 
+/** Return the normalized horizontal tangent of the track centerline. */
+cgp::vec3 terrain_structure::track_tangent(float u, float du) const
+{
+    vec3 const tangent = track_centerline(u + du) - track_centerline(u - du);
+    return normalize_or(vec3{tangent.x, 0.0f, tangent.z}, {1.0f, 0.0f, 0.0f});
+}
+
+/** Return the normalized horizontal side direction of the track centerline. */
+cgp::vec3 terrain_structure::track_side_direction(float u, float du) const
+{
+    return horizontal_normal(track_tangent(u, du));
+}
+
+/** Return a point ahead of a track projection, used when adversaries need to return toward the centerline. */
 cgp::vec3 terrain_structure::track_point_ahead(track_projection const& projection, float lookahead_distance) const
 {
     float const ahead_u = projection.u + lookahead_distance / track_radius;
     return track_centerline(ahead_u);
 }
 
+/** Keep a car inside the road by testing its four hitbox samples against the track bounds. */
 void terrain_structure::resolve_collision(car& car) const
 {
     float const half_track_width = 0.5f * track_width;
@@ -172,6 +192,7 @@ void terrain_structure::resolve_collision(car& car) const
  Mesh definition
  **************************/
 
+/** Build the asphalt road mesh, including UV coordinates for repeated asphalt texture. */
 mesh terrain_structure::create_asphalt_mesh() const
 {
     mesh asphalt;
@@ -222,6 +243,7 @@ mesh terrain_structure::create_asphalt_mesh() const
     return asphalt;
 }
 
+/** Build the two vertical wall strips around the track, including UV coordinates for brick texture. */
 mesh terrain_structure::create_barrier_mesh() const
 {
     mesh barrier;
