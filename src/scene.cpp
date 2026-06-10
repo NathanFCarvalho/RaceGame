@@ -202,22 +202,14 @@ void scene_structure::display_countdown_overlay()
     ImGui::End();
 }
 
-void scene_structure::update_adversary_control(adversary_car& adversary, bool race_started)
+void scene_structure::update_adversary_control(adversary_car& adversary)
 {
-    if (race_started) {
-        track_projection const proj = terrain.closest_track_projection(adversary.position);
-        float const centerline_tolerance = terrain.track_width / 6.0f;
-        if (std::abs(proj.lateral_distance) <= centerline_tolerance)
-            adversary.align_with_track_tangent(proj.tangent_direction);
-        else
-            adversary.follow_target(terrain.track_point_ahead(proj, adversary.lookahead_distance));
-        return;
-    }
-
-    adversary.throttle_input = 0;
-    adversary.steering_input = 0;
-    adversary.forward = player.forward;
-    adversary.update_direction_vectors();
+    track_projection const proj = terrain.closest_track_projection(adversary.position);
+    float const centerline_tolerance = terrain.track_width / 6.0f;
+    if (std::abs(proj.lateral_distance) <= centerline_tolerance)
+        adversary.align_with_track_tangent(proj.tangent_direction);
+    else
+        adversary.follow_target(terrain.track_point_ahead(proj, adversary.lookahead_distance));
 }
 
 void scene_structure::initialize_car_on_track(car& vehicle, float lateral_offset)
@@ -331,10 +323,9 @@ void scene_structure::display_frame()
         terrain.resolve_collision(player);
         player.update(dt);
 
-        bool const race_started = player.throttle_input != 0 || norm(player.velocity) > 0.1f;
         for (adversary_car& adversary : adversaries) {
             terrain.resolve_collision(adversary);
-            update_adversary_control(adversary, race_started);
+            update_adversary_control(adversary);
             adversary.update(dt);
         }
 

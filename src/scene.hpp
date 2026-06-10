@@ -38,7 +38,7 @@ struct scene_structure : cgp::scene_inputs_generic {
 	void start_countdown();
 	void update_countdown(float dt);
 	void display_countdown_overlay();
-	void update_adversary_control(adversary_car& adversary, bool race_started);
+	void update_adversary_control(adversary_car& adversary);
 
 	// ****************************** //
 	// Context

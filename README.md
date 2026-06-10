@@ -33,8 +33,6 @@ Le jeu commence par un menu plein écran réalisé avec ImGui. Ce menu permet de
 
   
 
-- la carte ;
-
 - la couleur de la voiture du joueur ;
 
 - le lancement de la course.
@@ -42,6 +40,13 @@ Le jeu commence par un menu plein écran réalisé avec ImGui. Ce menu permet de
   
 
 Après avoir appuyé sur `Play`, un compte à rebours `3, 2, 1, GO` est affiché avant le début réel de la course. Pendant ce temps, les voitures restent à la ligne de départ.
+
+Le compte à rebours est géré dans `scene.cpp` avec deux états simples :
+
+- `game_started` indique que l’écran de course est affiché ;
+- `race_active` indique que la simulation de la course peut réellement commencer.
+
+Quand le joueur appuie sur `Play`, `race_active` reste faux et un temps `countdown_time` commence à augmenter. Tant que le compte à rebours n’est pas terminé, les contrôles du joueur et l’IA des adversaires sont bloqués. Quand le message `GO` est terminé, `race_active` devient vrai : les voitures peuvent alors démarrer.
 
   
 
