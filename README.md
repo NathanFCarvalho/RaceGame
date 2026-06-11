@@ -443,6 +443,8 @@ La scène initialise :
 
 - la skybox ;
 
+- l'environment map ;
+
 - le modèle 3D de la voiture ;
 
 - les roues et les jantes ;
