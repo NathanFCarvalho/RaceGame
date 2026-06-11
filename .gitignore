@@ -1,4 +1,6 @@
 build/
+.exe
+imgui.ini
 
 # CMake generated files
 CMakeUserPresets.json
