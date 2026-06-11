@@ -2,6 +2,8 @@
 #include "car_model.hpp"
 #include "utils.hpp"
 
+#include <random>
+
 using namespace cgp;
 
 namespace {
@@ -11,9 +13,18 @@ constexpr bool use_obj_car_model = true;
 constexpr float window_environment_reflection = 0.85f;
 constexpr float hitbox_debug_height = 0.08f;
 constexpr float hitbox_point_radius = 0.06f;
-constexpr int adversary_car_count = 6;
+constexpr int adversary_car_count = 3;
+constexpr int tree_variant_count = 4;
 constexpr float startline_u = 0.0f;
 constexpr float countdown_duration = 4.0f;
+char const* map_names[] = {"Oval", "Technical"};
+
+float squared_distance_xz(vec3 const& a, vec3 const& b)
+{
+    float const dx = a.x - b.x;
+    float const dz = a.z - b.z;
+    return dx * dx + dz * dz;
+}
 }
 
 void scene_structure::initialize()
@@ -23,19 +34,13 @@ void scene_structure::initialize()
 	camera_control.set_rotation_axis_y();
     camera_projection.depth_min = 0.1f;
     camera_projection.depth_max = 3000.0f;
-    player.camera.position_camera(1.0f, player.facing_direction, player.position, player.normal);
+    player.camera.position_camera(1.0f, player.forward, player.position, player.normal);
 	position_camera();
 
 	display_info();
     
 	global_frame.initialize_data_on_gpu(mesh_primitive_frame());
-    ground.initialize_data_on_gpu(mesh_primitive_quadrangle(
-        {-900.0f, -0.56f, -900.0f},
-        { 900.0f, -0.56f, -900.0f},
-        { 900.0f, -0.56f,  900.0f},
-        {-900.0f, -0.56f,  900.0f}));
-    ground.material.color = {0.18f, 0.42f, 0.18f};
-    ground.material.phong = {0.35f, 0.25f, 0.0f, 1.0f};
+    initialize_ground_drawable();
     hitbox_point_drawable.initialize_data_on_gpu(mesh_primitive_sphere(1.0f, {0.0f, 0.0f, 0.0f}, 12, 6));
     hitbox_point_drawable.material.color = {1.0f, 0.9f, 0.05f};
     hitbox_point_drawable.material.phong = {0.6f, 0.4f, 0.0f, 1.0f};
@@ -106,6 +111,38 @@ void scene_structure::initialize()
         car_window_drawable.supplementary_texture["image_skybox"] = skybox.texture;
     }
 
+    initialize_vegetation();
+}
+
+void scene_structure::initialize_ground_drawable()
+{
+    if (ground_outside_in.vao != 0)
+        ground_outside_in.clear();
+    if (ground_outside_out.vao != 0)
+        ground_outside_out.clear();
+    if (outside_out_hills.vao != 0)
+        outside_out_hills.clear();
+    if (lake.vao != 0)
+        lake.clear();
+
+    ground_outside_out.initialize_data_on_gpu(terrain.create_region_ground_mesh(track_region::outside_out, 900.0f, 240));
+    ground_outside_out.material.color = {1.0f, 1.0f, 1.0f};
+    ground_outside_out.material.phong = {0.35f, 0.25f, 0.0f, 1.0f};
+
+    ground_outside_in.initialize_data_on_gpu(terrain.create_region_ground_mesh(track_region::outside_in, 900.0f, 240));
+    ground_outside_in.material.color = {1.0f, 1.0f, 1.0f};
+    ground_outside_in.material.phong = {0.35f, 0.25f, 0.0f, 1.0f};
+    ground_outside_in.texture.load_and_initialize_texture_2d_on_gpu(project::path + "assets/Sand.png", GL_MIRRORED_REPEAT, GL_MIRRORED_REPEAT);
+
+    outside_out_hills.initialize_data_on_gpu(terrain.create_outside_out_hills_mesh());
+    outside_out_hills.model.translation = {0.0f, -0.5f, 0.0f};
+    outside_out_hills.material.color = {1.0f, 1.0f, 1.0f};
+    outside_out_hills.material.phong = {0.4f, 0.45f, 0.0f, 1.0f};
+
+    lake.initialize_data_on_gpu(terrain.create_lake_mesh());
+    lake.material.color = {0.75f, 0.9f, 1.0f};
+    lake.material.alpha = 0.62f;
+    lake.material.phong = {0.45f, 0.65f, 0.25f, 32.0f};
 }
 
 void scene_structure::initialize_track_drawables()
@@ -128,6 +165,135 @@ void scene_structure::initialize_track_drawables()
     barrier.model.translation = {0.0f, -0.5f, 0.0f};
     barrier.material.color = {1.0f, 1.0f, 1.0f};
     barrier.material.phong = {0.35f, 0.45f, 0.0f, 1.0f};
+}
+
+void scene_structure::set_map_id(int map_id)
+{
+    if (terrain.map_id == map_id)
+        return;
+
+    terrain.map_id = map_id;
+    terrain.invalidate_region_cache();
+
+    initialize_ground_drawable();
+    initialize_track_drawables();
+    initialize_vegetation();
+
+    reset_race_start();
+    player.camera.position_camera(1.0f, player.forward, player.position, player.normal);
+    position_camera();
+}
+
+void scene_structure::initialize_vegetation()
+{
+    tree_instances.clear();
+    bush_instances.clear();
+
+    for (int k = 0; k < tree_variant_count; ++k) {
+        if (tree_drawables[k].vao != 0)
+            tree_drawables[k].clear();
+        tree_drawables[k].initialize_data_on_gpu(create_fractal_tree_mesh(4200u + static_cast<unsigned int>(k) * 37u));
+        tree_drawables[k].material.color = {1.0f, 1.0f, 1.0f};
+        tree_drawables[k].material.phong = {0.45f, 0.4f, 0.0f, 1.0f};
+    }
+
+    if (bush_drawable.vao != 0)
+        bush_drawable.clear();
+    bush_drawable.initialize_data_on_gpu(create_bush_billboard_mesh(1.0f, 1.0f));
+    bush_drawable.texture.load_and_initialize_texture_2d_on_gpu(project::path + "assets/bush.png");
+    bush_drawable.material.color = {1.0f, 1.0f, 1.0f};
+    bush_drawable.material.phong = {0.25f, 0.25f, 0.0f, 1.0f};
+
+    std::mt19937 generator(9001u + static_cast<unsigned int>(terrain.map_id) * 131u);
+    std::uniform_real_distribution<float> x_distribution(-900.0f, 900.0f);
+    std::uniform_real_distribution<float> z_distribution(-900.0f, 900.0f);
+    std::uniform_real_distribution<float> yaw_distribution(0.0f, 2.0f * Pi);
+    std::uniform_real_distribution<float> tree_scale_distribution(1.35f, 2.25f);
+    std::uniform_real_distribution<float> bush_scale_distribution(2.8f, 5.2f);
+    std::uniform_int_distribution<int> tree_variant_distribution(0, tree_variant_count - 1);
+
+    auto is_spaced = [](std::vector<vegetation_instance> const& instances, vec3 const& candidate, float min_distance) {
+        float const min_distance_sq = min_distance * min_distance;
+        for (vegetation_instance const& instance : instances) {
+            if (squared_distance_xz(instance.position, candidate) < min_distance_sq)
+                return false;
+        }
+        return true;
+    };
+
+    int const target_tree_count = 130;
+    int const target_bush_count = 180;
+    int const max_attempts = 12000;
+
+    for (int attempt = 0; attempt < max_attempts && tree_instances.size() < static_cast<size_t>(target_tree_count); ++attempt) {
+        vec3 point = {x_distribution(generator), 0.0f, z_distribution(generator)};
+        if (!terrain.is_outside_out_hill_point(point, 48.0f))
+            continue;
+
+        vec3 const normal = terrain.outside_out_normal(point);
+        if (normal.y < 0.82f)
+            continue;
+
+        point.y = terrain.outside_out_height(point) - 0.5f;
+        if (!is_spaced(tree_instances, point, 22.0f))
+            continue;
+
+        vegetation_instance instance;
+        instance.position = point;
+        instance.scale = tree_scale_distribution(generator);
+        instance.yaw = yaw_distribution(generator);
+        instance.variant = tree_variant_distribution(generator);
+        tree_instances.push_back(instance);
+    }
+
+    for (int attempt = 0; attempt < max_attempts && bush_instances.size() < static_cast<size_t>(target_bush_count); ++attempt) {
+        vec3 point = {x_distribution(generator), 0.0f, z_distribution(generator)};
+        if (!terrain.is_outside_out_hill_point(point, 55.0f))
+            continue;
+
+        vec3 const normal = terrain.outside_out_normal(point);
+        if (normal.y < 0.74f)
+            continue;
+
+        point.y = terrain.outside_out_height(point) - 0.5f;
+        if (!is_spaced(bush_instances, point, 13.0f) || !is_spaced(tree_instances, point, 16.0f))
+            continue;
+
+        vegetation_instance instance;
+        instance.position = point;
+        instance.scale = bush_scale_distribution(generator);
+        instance.yaw = yaw_distribution(generator);
+        bush_instances.push_back(instance);
+    }
+}
+
+void scene_structure::display_vegetation()
+{
+    if (gui.display_trees) {
+        for (vegetation_instance const& instance : tree_instances) {
+            mesh_drawable& drawable = tree_drawables[static_cast<size_t>(instance.variant) % tree_drawables.size()];
+            drawable.model.translation = instance.position;
+            drawable.model.rotation = rotation_transform::from_axis_angle({0.0f, 1.0f, 0.0f}, instance.yaw);
+            drawable.model.scaling = instance.scale;
+            drawable.model.scaling_xyz = {1.0f, 1.0f, 1.0f};
+            draw(drawable, environment);
+        }
+    }
+
+    if (gui.display_bushes) {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_FALSE);
+        for (vegetation_instance const& instance : bush_instances) {
+            bush_drawable.model.translation = instance.position;
+            bush_drawable.model.rotation = rotation_transform::from_axis_angle({0.0f, 1.0f, 0.0f}, instance.yaw);
+            bush_drawable.model.scaling = instance.scale;
+            bush_drawable.model.scaling_xyz = {1.0f, 1.0f, 1.0f};
+            draw(bush_drawable, environment);
+        }
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
+    }
 }
 
 void scene_structure::reset_race_start()
@@ -319,10 +485,19 @@ void scene_structure::display_frame()
         glDepthMask(GL_TRUE);
     }
 	
-	draw(ground, environment);
+	draw(ground_outside_out, environment);
+	draw(ground_outside_in, environment);
+	draw(outside_out_hills, environment);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthMask(GL_FALSE);
+    draw(lake, environment);
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
     if (gui.display_mountains) {
         terrain_mountains.display(environment);
     }
+    display_vegetation();
     draw(asphalt, environment);
     draw(barrier, environment);
 
@@ -372,6 +547,12 @@ void scene_structure::display_gui()
 	ImGui::Checkbox("Frame", &gui.display_frame);
 	ImGui::Checkbox("Hitbox", &gui.display_hitbox);
 	ImGui::Checkbox("Top View", &gui.top_view);
+    int selected_map = terrain.map_id - 1;
+    if (ImGui::Combo("Map", &selected_map, map_names, IM_ARRAYSIZE(map_names))) {
+        game_started = false;
+        race_active = false;
+        set_map_id(selected_map + 1);
+    }
     if (ImGui::Button("Back to Menu")) {
         game_started = false;
         race_active = false;
@@ -381,6 +562,8 @@ void scene_structure::display_gui()
 
     if (ImGui::CollapsingHeader("Scenario", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Checkbox("Mountains", &gui.display_mountains);
+        ImGui::Checkbox("Trees", &gui.display_trees);
+        ImGui::Checkbox("Bushes", &gui.display_bushes);
     }
 
     if (ImGui::CollapsingHeader("Car Debug", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -440,6 +623,11 @@ void scene_structure::display_start_menu()
     ImGui::Spacing();
 
     ImGui::ColorEdit3("Car Color", &player_color.x);
+    ImGui::Spacing();
+
+    int selected_map = terrain.map_id - 1;
+    if (ImGui::Combo("Map", &selected_map, map_names, IM_ARRAYSIZE(map_names)))
+        set_map_id(selected_map + 1);
     ImGui::Spacing();
 
     if (ImGui::Button("Play", {panel_size.x, 44.0f})) {

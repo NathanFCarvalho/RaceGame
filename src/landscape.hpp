@@ -5,6 +5,7 @@
 #include "terrain.hpp"
 
 #include <string>
+#include <vector>
 
 struct mountains_parameters {
     std::string texture_path;
@@ -34,3 +35,6 @@ private:
     mountains_parameters parameters;
     cgp::mesh_drawable drawable;
 };
+
+cgp::mesh create_fractal_tree_mesh(unsigned int seed);
+cgp::mesh create_bush_billboard_mesh(float width = 1.0f, float height = 1.0f);

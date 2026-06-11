@@ -16,6 +16,15 @@ struct gui_parameters {
 	bool display_pines = true;
 	bool top_view = false;
     bool display_mountains = true;
+    bool display_trees = true;
+    bool display_bushes = true;
+};
+
+struct vegetation_instance {
+    cgp::vec3 position;
+    float scale = 1.0f;
+    float yaw = 0.0f;
+    int variant = 0;
 };
 
 // The structure of the custom scene
@@ -34,7 +43,11 @@ struct scene_structure : cgp::scene_inputs_generic {
 	void display_hitbox(car const& car, cgp::vec3 const& color);
 	void position_camera();
 	void initialize_car_on_track(car& car, float lateral_offset = 0.0f);
+	void initialize_ground_drawable();
 	void initialize_track_drawables();
+	void initialize_vegetation();
+	void display_vegetation();
+	void set_map_id(int map_id);
 	void reset_race_start();
 	void display_start_menu();
 	void start_countdown();
@@ -82,7 +95,14 @@ struct scene_structure : cgp::scene_inputs_generic {
     std::array<cgp::mesh_drawable, 4> wheel_tire_drawables;
     std::array<cgp::mesh_drawable, 4> wheel_rim_drawables;
 	cgp::mesh_drawable hitbox_point_drawable;
-	cgp::mesh_drawable ground;
+	cgp::mesh_drawable ground_outside_in;
+	cgp::mesh_drawable ground_outside_out;
+	cgp::mesh_drawable outside_out_hills;
+	cgp::mesh_drawable lake;
+	std::array<cgp::mesh_drawable, 4> tree_drawables;
+	cgp::mesh_drawable bush_drawable;
+	std::vector<vegetation_instance> tree_instances;
+	std::vector<vegetation_instance> bush_instances;
 	cgp::mesh_drawable asphalt;
 	cgp::mesh_drawable barrier;
 
