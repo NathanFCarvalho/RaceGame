@@ -12,6 +12,7 @@ using cgp::mesh_drawable;
 
 struct gui_parameters {
 	bool display_frame = true;
+	bool display_hitbox = true;
 	bool display_pines = true;
 	bool top_view = false;
     bool display_mountains = true;
@@ -30,8 +31,16 @@ struct scene_structure : cgp::scene_inputs_generic {
 	void display_info();
 
 	void display_car(car const& car, cgp::vec3 const& color);
+	void display_hitbox(car const& car, cgp::vec3 const& color);
 	void position_camera();
 	void initialize_car_on_track(car& car, float lateral_offset = 0.0f);
+	void initialize_track_drawables();
+	void reset_race_start();
+	void display_start_menu();
+	void start_countdown();
+	void update_countdown(float dt);
+	void display_countdown_overlay();
+	void update_adversary_control(adversary_car& adversary);
 
 	// ****************************** //
 	// Context
@@ -53,19 +62,26 @@ struct scene_structure : cgp::scene_inputs_generic {
 	// Elements and shapes of the scene
 	// ****************************** //
 	timer_basic timer;
-	mesh_drawable global_frame;          // The standard global frame
+	mesh_drawable global_frame;          
 	
 	car_structure car_base;
 	player_car player;
 	std::vector<adversary_car> adversaries;
+	std::vector<cgp::vec3> adversary_colors;
 
 	terrain_structure terrain;
     mountains terrain_mountains;
+	bool game_started = false;
+	bool race_active = false;
+	float countdown_time = 0.0f;
+	cgp::vec3 player_color = {0.1f, 0.25f, 0.85f};
 
 	cgp::skybox_drawable skybox;
 	cgp::mesh_drawable car_drawable;
+	cgp::mesh_drawable car_window_drawable;
     std::array<cgp::mesh_drawable, 4> wheel_tire_drawables;
     std::array<cgp::mesh_drawable, 4> wheel_rim_drawables;
+	cgp::mesh_drawable hitbox_point_drawable;
 	cgp::mesh_drawable ground;
 	cgp::mesh_drawable asphalt;
 	cgp::mesh_drawable barrier;

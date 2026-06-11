@@ -155,16 +155,19 @@ void application_structure::animation_loop()
 
     imgui_create_frame();
     ImGui::GetIO().FontGlobalScale = project::gui_scale;
-    ImGui::Begin("GUI", NULL, ImGuiWindowFlags_AlwaysAutoResize);
     s.inputs.time_interval = time_interval;
 
-    display_gui_default();
-    s.display_gui();
+    if (s.game_started) {
+        ImGui::Begin("GUI", NULL, ImGuiWindowFlags_AlwaysAutoResize);
+        display_gui_default();
+        s.display_gui();
+        ImGui::End();
+    }
 
     s.idle_frame();
     s.display_frame();
+    s.display_start_menu();
 
-    ImGui::End();
     imgui_render_frame(s.window.glfw_window);
     glfwSwapBuffers(s.window.glfw_window);
     glfwPollEvents();

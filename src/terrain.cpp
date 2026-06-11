@@ -3,24 +3,39 @@
 
 using namespace cgp;
 
+/** Convert a sample index on the track mesh into an angular parameter in [0, 2*pi). */
 float track_parameter(int ku, int N)
 {
     return 2.0f * Pi * ku / N;
 }
 
+/** Return a horizontal normal vector perpendicular to a track tangent. */
 vec3 horizontal_normal(vec3 const& tangent)
 {
     vec3 const flat_tangent = normalize(vec3{tangent.x, 0.0f, tangent.z});
     return normalize(vec3{-flat_tangent.z, 0.0f, flat_tangent.x});
 }
 
+/** Compute squared distance using only x/z coordinates. */
 float squared_norm_xz(vec3 const& value)
 {
     return value.x * value.x + value.z * value.z;
 }
 
+/** Evaluate the current map centerline at parameter u. */
 vec3 terrain_structure::track_centerline(float u) const
 {
+    if (map_id == 1) {
+        float const a = 240.0f;
+        float const b = 150.0f;
+        float const bend = 0.18f * std::sin(3.0f * u);
+        return {
+            a * std::cos(u),
+            0.0f,
+            b * std::sin(u) + 70.0f * bend
+        };
+    }
+
     float const t = u / (2.0f * Pi); //remap
 
     constexpr int NP = 26;
@@ -66,6 +81,7 @@ vec3 terrain_structure::track_centerline(float u) const
              interpolation(pz[im1], pz[i0], pz[i1], pz[i2]) };
 }
 
+/** Project a world-space point onto the closest sampled segment of the track centerline. */
 track_projection terrain_structure::closest_track_projection(vec3 const& point) const
 {
     track_projection best;
@@ -112,12 +128,27 @@ track_projection terrain_structure::closest_track_projection(vec3 const& point) 
     return best;
 }
 
+/** Return the normalized horizontal tangent of the track centerline. */
+cgp::vec3 terrain_structure::track_tangent(float u, float du) const
+{
+    vec3 const tangent = track_centerline(u + du) - track_centerline(u - du);
+    return normalize_or(vec3{tangent.x, 0.0f, tangent.z}, {1.0f, 0.0f, 0.0f});
+}
+
+/** Return the normalized horizontal side direction of the track centerline. */
+cgp::vec3 terrain_structure::track_side_direction(float u, float du) const
+{
+    return horizontal_normal(track_tangent(u, du));
+}
+
+/** Return a point ahead of a track projection, used when adversaries need to return toward the centerline. */
 cgp::vec3 terrain_structure::track_point_ahead(track_projection const& projection, float lookahead_distance) const
 {
     float const ahead_u = projection.u + lookahead_distance / track_radius;
     return track_centerline(ahead_u);
 }
 
+/** Keep a car inside the road by testing its four hitbox samples against the track bounds. */
 void terrain_structure::resolve_collision(car& car) const
 {
     float const half_track_width = 0.5f * track_width;
@@ -125,6 +156,9 @@ void terrain_structure::resolve_collision(car& car) const
     std::array<vec3, 4> const hitbox_samples = car.get_hitbox_samples();
 
     for (int iteration = 0; iteration < 2; ++iteration) {
+        float max_penetration = 0.0f;
+        vec3 wall_normal = {0.0f, 0.0f, 0.0f};
+
         for (vec3 const& hitbox_sample : hitbox_samples) {
             vec3 const sample_position = car.position + hitbox_sample;
             track_projection const projection = closest_track_projection(sample_position);
@@ -133,15 +167,24 @@ void terrain_structure::resolve_collision(car& car) const
             if (lateral_abs <= half_track_width)
                 continue;
 
+            float const penetration = lateral_abs - half_track_width;
             float const side_sign = projection.lateral_distance >= 0.0f ? 1.0f : -1.0f;
-            vec3 const wall_normal = -side_sign * projection.side_direction;
-
-            float const normal_speed = dot(car.velocity, wall_normal);
-            if (normal_speed < 0.0f)
-                car.velocity -= 2 * normal_speed * wall_normal;
-
-            car.velocity *= wall_friction;
+            if (penetration > max_penetration) {
+                max_penetration = penetration;
+                wall_normal = -side_sign * projection.side_direction;
+            }
         }
+
+        if (max_penetration <= 0.0f)
+            continue;
+
+        car.position += (max_penetration + 0.01f) * wall_normal;
+
+        float const normal_speed = dot(car.velocity, wall_normal);
+        if (normal_speed < 0.0f)
+            car.velocity -= 2 * normal_speed * wall_normal;
+
+        car.velocity *= wall_friction;
     }
 }
 
@@ -149,13 +192,17 @@ void terrain_structure::resolve_collision(car& car) const
  Mesh definition
  **************************/
 
+/** Build the asphalt road mesh, including UV coordinates for repeated asphalt texture. */
 mesh terrain_structure::create_asphalt_mesh() const
 {
     mesh asphalt;
     asphalt.position.resize(4 * N);
+    asphalt.uv.resize(4 * N);
 
     float const half_width = 0.5f * track_width;
     float const du = 0.001f;
+    float const texture_tile_size = 3.0f;
+    float distance_along_track = 0.0f;
 
     for (int ku = 0; ku < N; ++ku) {
         float const u = track_parameter(ku, N);
@@ -163,6 +210,11 @@ mesh terrain_structure::create_asphalt_mesh() const
 
         vec3 const center = track_centerline(u);
         vec3 const center_next = track_centerline(u_next);
+        float const segment_length = norm(center_next - center);
+        float const v = distance_along_track / texture_tile_size;
+        float const v_next = (distance_along_track + segment_length) / texture_tile_size;
+        float const u_left = 0.0f;
+        float const u_right = track_width / texture_tile_size;
 
         vec3 const tangent = track_centerline(u + du) - track_centerline(u - du);
         vec3 const tangent_next = track_centerline(u_next + du) - track_centerline(u_next - du);
@@ -177,35 +229,59 @@ mesh terrain_structure::create_asphalt_mesh() const
         asphalt.position[idx + 2] = center_next + half_width * side_next;
         asphalt.position[idx + 3] = center_next - half_width * side_next;
 
+        asphalt.uv[idx] = {u_left, v};
+        asphalt.uv[idx + 1] = {u_right, v};
+        asphalt.uv[idx + 2] = {u_right, v_next};
+        asphalt.uv[idx + 3] = {u_left, v_next};
+
         asphalt.connectivity.push_back({idx, idx + 1, idx + 2});
         asphalt.connectivity.push_back({idx, idx + 2, idx + 3});
+        distance_along_track += segment_length;
     }
 
     asphalt.fill_empty_field();
     return asphalt;
 }
 
+/** Build the two vertical wall strips around the track, including UV coordinates for brick texture. */
 mesh terrain_structure::create_barrier_mesh() const
 {
     mesh barrier;
     barrier.position.resize(4 * N);
+    barrier.uv.resize(4 * N);
 
     float const half_width = 0.5f * track_width;
     float const du = 0.001f;
+    float const brick_tile_length = 2.0f;
+    float const brick_tile_height = 0.4f;
+    float distance_along_track = 0.0f;
 
     for (int ku = 0; ku < N; ++ku) {
         float const u = track_parameter(ku, N);
+        float const u_next = track_parameter((ku + 1) % N, N);
         vec3 const center = track_centerline(u);
+        vec3 const center_next = track_centerline(u_next);
         vec3 const tangent = track_centerline(u + du) - track_centerline(u - du);
         vec3 const side = horizontal_normal(tangent);
+
+        float const uv_u = distance_along_track / brick_tile_length;
+        float const uv_v = barrier_height / brick_tile_height;
+        unsigned int const idx = 4 * ku;
 
         vec3 const left_base = center - half_width * side;
         vec3 const right_base = center + half_width * side;
 
-        barrier.position[4 * ku] = left_base;
-        barrier.position[4 * ku + 1] = left_base + vec3{0.0f, barrier_height, 0.0f};
-        barrier.position[4 * ku + 2] = right_base;
-        barrier.position[4 * ku + 3] = right_base + vec3{0.0f, barrier_height, 0.0f};
+        barrier.position[idx] = left_base;
+        barrier.position[idx + 1] = left_base + vec3{0.0f, barrier_height, 0.0f};
+        barrier.position[idx + 2] = right_base;
+        barrier.position[idx + 3] = right_base + vec3{0.0f, barrier_height, 0.0f};
+
+        barrier.uv[idx] = {uv_u, 0.0f};
+        barrier.uv[idx + 1] = {uv_u, uv_v};
+        barrier.uv[idx + 2] = {uv_u, 0.0f};
+        barrier.uv[idx + 3] = {uv_u, uv_v};
+
+        distance_along_track += norm(center_next - center);
     }
 
     for (int ku = 0; ku < N; ++ku) {

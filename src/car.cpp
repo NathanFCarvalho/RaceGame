@@ -3,30 +3,28 @@
 
 using namespace cgp;
 
-/**************************
+/****************************************************
  Camera movement definition
- **************************/
+ ****************************************************/
 
 camera_control::camera_control()
 {
     position = {-up_offset, back_offset, 0.0f};
     distance_from_car = {-up_offset, back_offset, 0.0f};
-    camera_smoothed_direction = {1.0f, 0.0f, 0.0f};
-    camera_smoothed_position = position;
 }
 
-void camera_control::position_camera(float dt, vec3& car_facing_direction, vec3& car_position, vec3& car_up) 
+void camera_control::position_camera(float dt, vec3& car_forward, vec3& car_position, vec3& car_up) 
 {
-    vec3 const target_direction = normalize_or(car_facing_direction, {1.0f, 0.0f, 0.0f});
+    vec3 const target_direction = normalize_or(car_forward, {1.0f, 0.0f, 0.0f}); // faces the same direction as the car
     vec3 const up = normalize_or(car_up, {0.0f, 1.0f, 0.0f});
-	vec3 target_position = car_position - back_offset * target_direction + up_offset * up;
-    float position_alpha = 1.0f - std::exp(-camera_position_response * dt);
+	vec3 target_position = car_position - back_offset * target_direction + up_offset * up; // positions the camera behind the car
+    float position_alpha = 1.0f - std::exp(-camera_position_response * dt); // sets a delay from last position
     position = (1.0f - position_alpha) * position + position_alpha * target_position;
 }
 
-/**************************
+/****************************************************
  Car structure definition
- **************************/
+ ****************************************************/
 
 cgp::mesh car_structure::create_wheel_mesh() const
 {
@@ -35,19 +33,19 @@ cgp::mesh car_structure::create_wheel_mesh() const
 
 cgp::mesh car_structure::create_wheel_rim_mesh() const
 {
-    mesh first_disc = mesh_primitive_disc(wheel_radius, {0.0f, 0.0f, -0.055f}, {0.0f, 0.0f, -1.0f}, 32);
-    mesh second_disc = mesh_primitive_disc(wheel_radius, {0.0f, 0.0f, 0.055f}, {0.0f, 0.0f, 1.0f}, 32);
+    mesh first_disc = mesh_primitive_disc(wheel_radius, {0.0f, 0.0f, -tire_position}, {0.0f, 0.0f, -1.0f}, 32);
+    mesh second_disc = mesh_primitive_disc(wheel_radius, {0.0f, 0.0f, tire_position}, {0.0f, 0.0f, 1.0f}, 32);
     first_disc.push_back(second_disc);
     first_disc.fill_empty_field();
     return first_disc;
 }
 
-/**************************
+/****************************************************
  Car movement definition
- **************************/
+ ****************************************************/
 
 car::car()
-{    
+{
     idx = 0;
     in_colision = false;
 
@@ -55,8 +53,9 @@ car::car()
     wheel_acceleration = 0.0f;
     steering_angle = 0.0f;
     angular_speed = 0.0f;
+    
     collision_angular_speed = 0.0f;
-    wheel_spin_angle = 0.0f;
+    wheel_spin_angle = 0.0f; // rotation
     throttle_input = 0;
     steering_input = 0;
 
@@ -64,76 +63,100 @@ car::car()
 	velocity = {0.0f, 0.0f, 0.0f};
 	acceleration = {0.0f, 0.0f, 0.0f};
 
-    // Default placement; scene-specific placement can override position and direction.
+    // Default placement
     normal = {0.0f, 1.0f, 0.0f};
-    facing_direction = {-0.0f, 0.0f, 1.0f};
+    forward = {-0.0f, 0.0f, 1.0f};
+    update_direction_vectors();
+}
+
+void reset_car_state(car& vehicle)
+{
+    vehicle.in_colision = false;
+    vehicle.wheel_acceleration = 0.0f;
+    vehicle.steering_angle = 0.0f;
+    vehicle.angular_speed = 0.0f;
+    vehicle.collision_angular_speed = 0.0f;
+    vehicle.wheel_spin_angle = 0.0f;
+    vehicle.throttle_input = 0;
+    vehicle.steering_input = 0;
+    vehicle.position = {0.0f, 0.0f, 0.0f};
+    vehicle.velocity = {0.0f, 0.0f, 0.0f};
+    vehicle.acceleration = {0.0f, 0.0f, 0.0f};
+    vehicle.normal = {0.0f, 1.0f, 0.0f};
+    vehicle.forward = {-0.0f, 0.0f, 1.0f};
+    vehicle.update_direction_vectors();
+}
+
+float adversary_start_lateral_offset(size_t adversary_index, float spacing)
+{
+    float const side = adversary_index % 2 == 0 ? 1.0f : -1.0f;
+    float const rank = 1.0f + static_cast<float>(adversary_index / 2);
+    return side * rank * spacing;
+}
+
+void car::update_direction_vectors()
+{
+    forward = normalize_or(forward, {1.0f, 0.0f, 0.0f});
+    up = normalize_or(normal, {0.0f, 1.0f, 0.0f});
+    right = normalize_or(cross(up, forward), {0.0f, 0.0f, -1.0f});
 }
 
 void car::update(float dt)
 {
+    update_direction_vectors();
+
+    // While pressing left or right, steering angle increases or decreases with constant steering speed.
+    // If nothing is pressed, angle tends again to the center with constant speed.
     if (steering_input != 0)
         steering_angle += steering_input * constants.steering_speed * dt;
     else
         steering_angle = approach_zero(steering_angle, constants.steering_return_speed * dt);
 
+    // Steering angle has a maximum value.
     steering_angle = clamp_value(
         steering_angle,
         -constants.max_steering_angle,
         constants.max_steering_angle);
-
-    vec3 const up = normalize_or(normal, {0.0f, 1.0f, 0.0f});
-    vec3 const forward = normalize_or(facing_direction, {1.0f, 0.0f, 0.0f});
-    vec3 const right = normalize_or(cross(up, forward), {0.0f, 0.0f, -1.0f});
+    
     float const current_forward_speed = dot(velocity, forward);
     float const current_lateral_speed = dot(velocity, right);
+    
+    // Add drag factor to the acceleration. Lateral drag factor is larger.
     wheel_acceleration = throttle_input * constants.acceleration_value;
-
     float const forward_acceleration = wheel_acceleration - constants.drag_factor * current_forward_speed;
     float const lateral_acceleration = -constants.lateral_drag_factor * current_lateral_speed;
     acceleration = forward_acceleration * forward + lateral_acceleration * right;
 
+    // v += a * dt
     float const updated_forward_speed = current_forward_speed + forward_acceleration * dt;
+    // Byclicle turning model
     angular_speed = updated_forward_speed * std::tan(steering_angle) / dimensions.wheel_base;
 
     if (std::abs(angular_speed) > 1e-5f && std::abs(updated_forward_speed) > 1e-5f) {
         rotation_transform const yaw_rotation =
             rotation_transform::from_axis_angle(up, angular_speed * dt);
-        facing_direction = normalize(yaw_rotation * facing_direction);
+        forward = normalize(yaw_rotation * forward);
+        update_direction_vectors();
     }
 
+    // Collision rotation effect
     if (std::abs(collision_angular_speed) > 1e-5f) {
         rotation_transform const collision_rotation =
             rotation_transform::from_axis_angle(up, collision_angular_speed * dt);
-        facing_direction = normalize(collision_rotation * facing_direction);
+        forward = normalize(collision_rotation * forward);
+        update_direction_vectors();
         collision_angular_speed *= std::exp(-2.5f * dt);
     }
 
     velocity += acceleration * dt;
-    wheel_spin_angle += updated_forward_speed * dt / dimensions.wheel_radius;
     position += velocity * dt;
-}
-
-float car::forward_speed() const
-{
-    vec3 const forward = normalize_or(facing_direction, {1.0f, 0.0f, 0.0f});
-    return dot(velocity, forward);
-}
-
-float car::lateral_speed() const
-{
-    vec3 const forward = normalize_or(facing_direction, {1.0f, 0.0f, 0.0f});
-    vec3 const up = normalize_or(normal, {0.0f, 1.0f, 0.0f});
-    vec3 const right = normalize_or(cross(up, forward), {0.0f, 0.0f, -1.0f});
-    return dot(velocity, right);
+    wheel_spin_angle += updated_forward_speed * dt / dimensions.wheel_radius; // roling 
 }
 
 std::array<vec3, 4> car::get_hitbox_samples() const
 {
-    float half_length = dimensions.collision_half_length;
-    float half_width = dimensions.collision_half_width;
-    vec3 const forward = normalize_or(facing_direction, {1.0f, 0.0f, 0.0f});
-    vec3 const up = normalize_or(normal, {0.0f, 1.0f, 0.0f});
-    vec3 const right = normalize_or(cross(up, forward), {0.0f, 0.0f, -1.0f});
+    float half_length = dimensions.length / 2.0;
+    float half_width = dimensions.width / 2.0;
 
     std::array<vec3, 4> const hitbox_samples = {{
         half_length * forward + half_width * right,
@@ -145,10 +168,9 @@ std::array<vec3, 4> car::get_hitbox_samples() const
     return hitbox_samples;
 }
 
-
-/**************************
+/****************************************************
  Player movement definition
- **************************/
+ ****************************************************/
 
 void player_car::action_keyboard(input_devices* inputs, window_structure* window)
 {
@@ -170,31 +192,33 @@ void player_car::action_keyboard(input_devices* inputs, window_structure* window
 
 void player_car::position_camera(float dt)
 {
-    camera.position_camera(dt, facing_direction, position, normal);
+    camera.position_camera(dt, forward, position, normal);
 }
 
-/**************************
+/****************************************************
  Adversary movement definition
- **************************/
+ ****************************************************/
 
-void adversary_car::follow_target(vec3 const& target_position)
+void adversary_car::follow_direction(vec3 const& target_direction)
 {
-    vec3 const forward = normalize_or(facing_direction, {1.0f, 0.0f, 0.0f});
-    vec3 const up = normalize_or(normal, {0.0f, 1.0f, 0.0f});
-    vec3 const to_target = normalize_or(target_position - position, forward);
+    update_direction_vectors();
+    vec3 const desired_direction = normalize_or(target_direction, forward);
 
+    // Calculate the angle between forward direction and the desired direction.
     float const heading_error = std::atan2(
-        dot(cross(forward, to_target), up),
-        dot(forward, to_target));
+        dot(cross(forward, desired_direction), up),
+        dot(forward, desired_direction));
     float const target_steering_angle = clamp_value(
         heading_gain * heading_error,
         -constants.max_steering_angle,
         constants.max_steering_angle);
 
+    // Car slows down when it turns
     float const steering_ratio = std::abs(target_steering_angle) / constants.max_steering_angle;
     float const corner_speed_ratio = clamp_value(1.0f - steering_ratio, min_corner_speed_ratio, 1.0f);
     float const target_speed = adversary_target_speed * corner_speed_ratio;
-    throttle_input = forward_speed() < target_speed ? 1 : 0;
+    float const current_forward_speed = dot(velocity, forward);
+    throttle_input = current_forward_speed < target_speed ? 1 : 0;
 
     steering_input = 0;
     if (target_steering_angle > steering_angle + steering_dead_zone)
@@ -203,22 +227,29 @@ void adversary_car::follow_target(vec3 const& target_position)
         steering_input = -1;
 }
 
+void adversary_car::follow_target(vec3 const& target_position)
+{
+    follow_direction(target_position - position);
+}
+
+void adversary_car::align_with_track_tangent(vec3 const& target_tangent)
+{
+    follow_direction(target_tangent);
+}
+
 /**************************
  Car colision definition
  **************************/
 
 bool is_inside_hitbox(vec3 const& point, car const& vehicle)
 {
-    vec3 const forward = normalize_or(vehicle.facing_direction, {1.0f, 0.0f, 0.0f});
-    vec3 const up = normalize_or(vehicle.normal, {0.0f, 1.0f, 0.0f});
-    vec3 const right = normalize_or(cross(up, forward), {0.0f, 0.0f, -1.0f});
     vec3 const relative_position = point - vehicle.position;
 
-    float const local_forward = dot(relative_position, forward);
-    float const local_right = dot(relative_position, right);
+    float const local_forward = dot(relative_position, vehicle.forward);
+    float const local_right = dot(relative_position, vehicle.right);
 
-    return std::abs(local_forward) <= vehicle.dimensions.collision_half_length
-        && std::abs(local_right) <= vehicle.dimensions.collision_half_width;
+    return std::abs(local_forward) <= vehicle.dimensions.length/2.0
+        && std::abs(local_right) <= vehicle.dimensions.width/2.0;
 }
 
 bool hitboxes_overlap(car const& first, car const& second, vec3& contact_point)
@@ -248,16 +279,15 @@ vec3 collision_normal(car const& first, car const& second)
     if (norm(center_direction) > 1e-5f)
         return normalize(center_direction);
 
-    return normalize_or(first.velocity - second.velocity, first.facing_direction);
+    return normalize_or(first.velocity - second.velocity, first.forward);
 }
 
 void add_collision_spin(car& vehicle, vec3 const& contact_point, vec3 const& impulse)
 {
-    vec3 const up = normalize_or(vehicle.normal, {0.0f, 1.0f, 0.0f});
     vec3 const contact_offset = contact_point - vehicle.position;
-    float const torque = dot(cross(contact_offset, impulse), up);
-    float const half_length = vehicle.dimensions.collision_half_length;
-    float const half_width = vehicle.dimensions.collision_half_width;
+    float const torque = dot(cross(contact_offset, impulse), vehicle.up);
+    float const half_length = vehicle.dimensions.length/2.0;
+    float const half_width = vehicle.dimensions.width/2.0;
     float const inertia = std::max(half_length * half_length + half_width * half_width, 1e-3f);
     float constexpr spin_response = 0.35f;
 
