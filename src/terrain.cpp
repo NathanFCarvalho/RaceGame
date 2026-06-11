@@ -39,7 +39,6 @@ struct lake_parameters {
     float depth = 2.5f;
 };
 
-/** Convert a sample index on the track mesh into an angular parameter in [0, 2*pi). */
 float track_parameter(int ku, int N)
 {
     return 2.0f * Pi * ku / N;
@@ -64,6 +63,7 @@ float smoothstep(float edge0, float edge1, float value)
     return t * t * (3.0f - 2.0f * t);
 }
 
+//  per-map lake placement; map 2 is kept inside the outside_in track region.
 lake_parameters lake_settings(int map_id)
 {
     if (map_id == 1)
@@ -101,6 +101,7 @@ float lake_wave_height(vec3 const& point, int map_id)
     return edge_fade * (wave + detail);
 }
 
+// simple mesh cache to avoid regenerating expensive terrain grids every run. (made with AI)
 std::string terrain_cache_directory()
 {
     return project::path + "assets/cache/";
@@ -262,6 +263,7 @@ std::string terrain_mesh_cache_filename(
         + "_s" + std::to_string(samples)
         + ".bin";
 }
+/* end of mesh cache done by AI*/
 
 /** Return whether point is inside a polygon projected onto the x/z plane. */
 bool point_inside_polygon_xz(vec3 const& point, std::vector<vec3> const& polygon)
@@ -350,7 +352,7 @@ void initialize_centerline_samples(terrain_structure const& terrain)
     terrain.centerline_samples_map_id = terrain.map_id;
 }
 
-/** Return a side direction from the cached sampled centerline. */
+/* Return a side direction from the cached sampled centerline. */
 vec3 sampled_side_direction(terrain_structure const& terrain, int ku)
 {
     initialize_centerline_samples(terrain);
@@ -955,6 +957,7 @@ mesh terrain_structure::create_region_ground_mesh(track_region target_region, fl
     return ground_mesh;
 }
 
+// Codex-added: cached outside_out terrain mesh with Gaussian hills.
 mesh terrain_structure::create_outside_out_hills_mesh() const
 {
     int const samples = 180;

@@ -88,6 +88,7 @@ void add_leaf_cluster(mesh& tree, vec3 const& center, float radius, vec3 const& 
     tree.connectivity.push_back({idx + 5, idx + 1, idx + 4});
 }
 
+// groups several simple leaf clusters to make each procedural tree fuller. (made by AI)
 void add_leaf_cloud(mesh& tree, std::mt19937& generator, vec3 const& center, float radius, vec3 const& color)
 {
     std::uniform_real_distribution<float> offset_distribution(-0.65f, 0.65f);
