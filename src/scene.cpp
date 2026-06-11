@@ -201,6 +201,9 @@ void scene_structure::initialize_vegetation()
         bush_drawable.clear();
     bush_drawable.initialize_data_on_gpu(create_bush_billboard_mesh(1.0f, 1.0f));
     bush_drawable.texture.load_and_initialize_texture_2d_on_gpu(project::path + "assets/bush.png");
+    opengl_shader_structure shader_bush_transparency;
+    shader_bush_transparency.load(project::path + "shaders/mesh_transparency/mesh_transparency.vert.glsl", project::path + "shaders/mesh_transparency/mesh_transparency.frag.glsl");
+    bush_drawable.shader = shader_bush_transparency;
     bush_drawable.material.color = {1.0f, 1.0f, 1.0f};
     bush_drawable.material.phong = {0.25f, 0.25f, 0.0f, 1.0f};
 
@@ -221,8 +224,8 @@ void scene_structure::initialize_vegetation()
         return true;
     };
 
-    int const target_tree_count = 130;
-    int const target_bush_count = 180;
+    int const target_tree_count = 210;
+    int const target_bush_count = 320;
     int const max_attempts = 12000;
 
     for (int attempt = 0; attempt < max_attempts && tree_instances.size() < static_cast<size_t>(target_tree_count); ++attempt) {

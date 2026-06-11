@@ -69,7 +69,7 @@ lake_parameters lake_settings(int map_id)
     if (map_id == 1)
         return {{0.0f, 0.0f}, {72.0f, 42.0f}, 2.8f};
 
-    return {{-2.0f, 28.0f}, {34.0f, 20.0f}, 1.9f};
+    return {{72.0f, -6.0f}, {22.0f, 12.0f}, 1.7f};
 }
 
 float lake_normalized_radius(vec3 const& point, lake_parameters const& lake)
@@ -255,7 +255,7 @@ std::string terrain_mesh_cache_filename(
     int const extent_key = static_cast<int>(std::round(extent));
     return std::string("terrain_")
         + name
-        + "_v4_map" + std::to_string(map_id)
+        + "_v5_map" + std::to_string(map_id)
         + "_N" + std::to_string(N)
         + "_w" + std::to_string(width_key)
         + "_e" + std::to_string(extent_key)
@@ -837,7 +837,7 @@ mesh terrain_structure::create_region_ground_mesh(float extent, int samples) con
     int const grid_count = std::max(2, samples);
     int const vertex_count = (grid_count + 1) * (grid_count + 1);
 
-    vec3 const outside_in_color = {0.95f, 0.45f, 0.08f};
+    vec3 const outside_in_color = {1.0f, 1.0f, 1.0f};
     vec3 const outside_out_color = {0.18f, 0.42f, 0.18f};
     vec3 const track_underlay_color = outside_out_color;
     float const ground_height = -0.56f;
@@ -897,7 +897,7 @@ mesh terrain_structure::create_region_ground_mesh(track_region target_region, fl
     if (load_mesh_cache(cache_filename, cached_mesh))
         return cached_mesh;
 
-    vec3 const outside_in_color = {0.95f, 0.45f, 0.08f};
+    vec3 const outside_in_color = {1.0f, 1.0f, 1.0f};
     vec3 const outside_out_color = {0.18f, 0.42f, 0.18f};
     vec3 const region_color = target_region == track_region::outside_in
         ? outside_in_color
@@ -1028,61 +1028,64 @@ mesh terrain_structure::create_outside_out_hills_mesh() const
 cgp::mesh terrain_structure::create_lake_mesh() const
 {
     lake_parameters const settings = lake_settings(map_id);
-    int constexpr grid_count = 64;
-    int const side_count = grid_count + 1;
+    int constexpr angular_count = 192;
+    int constexpr radial_count = 28;
     float constexpr lake_height = -0.48f;
     vec3 const shallow_color = {0.20f, 0.70f, 0.92f};
     vec3 const deep_color = {0.02f, 0.22f, 0.62f};
 
     mesh lake;
-    lake.position.resize(side_count * side_count);
-    lake.color.resize(side_count * side_count);
-    lake.uv.resize(side_count * side_count);
+    lake.position.resize(1 + angular_count * radial_count);
+    lake.color.resize(1 + angular_count * radial_count);
+    lake.uv.resize(1 + angular_count * radial_count);
 
-    std::vector<unsigned char> valid(static_cast<size_t>(side_count * side_count), 0);
+    auto ring_index = [](int radial_index, int angular_index) {
+        return 1 + (radial_index - 1) * angular_count + angular_index;
+    };
 
-    auto index = [side_count](int kx, int kz) { return kz * side_count + kx; };
-    for (int kz = 0; kz < side_count; ++kz) {
-        float const tz = static_cast<float>(kz) / static_cast<float>(grid_count);
-        for (int kx = 0; kx < side_count; ++kx) {
-            float const tx = static_cast<float>(kx) / static_cast<float>(grid_count);
+    vec3 center_point = {settings.center.x, lake_height, settings.center.y};
+    center_point.y += lake_wave_height(center_point, map_id);
+    lake.position[0] = center_point;
+    lake.color[0] = deep_color;
+    lake.uv[0] = {0.5f, 0.5f};
+
+    for (int kr = 1; kr <= radial_count; ++kr) {
+        float const radial = static_cast<float>(kr) / static_cast<float>(radial_count);
+        for (int ka = 0; ka < angular_count; ++ka) {
+            float const angle = 2.0f * Pi * static_cast<float>(ka) / static_cast<float>(angular_count);
+            int const idx = ring_index(kr, ka);
             vec3 point = {
-                settings.center.x + (2.0f * tx - 1.0f) * settings.radius.x,
+                settings.center.x + radial * settings.radius.x * std::cos(angle),
                 lake_height,
-                settings.center.y + (2.0f * tz - 1.0f) * settings.radius.y
+                settings.center.y + radial * settings.radius.y * std::sin(angle)
             };
 
-            float const r = lake_normalized_radius(point, settings);
-            bool const inside = r <= 1.0f;
-            int const idx = index(kx, kz);
-            valid[static_cast<size_t>(idx)] = inside ? 1 : 0;
-
-            if (inside)
-                point.y += lake_wave_height(point, map_id);
-
-            float const color_t = clamp_value(1.0f - r, 0.0f, 1.0f);
+            point.y += lake_wave_height(point, map_id);
+            float const color_t = 1.0f - radial;
             lake.position[idx] = point;
             lake.color[idx] = color_t * deep_color + (1.0f - color_t) * shallow_color;
-            lake.uv[idx] = {tx, tz};
+            lake.uv[idx] = {
+                0.5f + 0.5f * radial * std::cos(angle),
+                0.5f + 0.5f * radial * std::sin(angle)
+            };
         }
     }
 
-    for (int kz = 0; kz < grid_count; ++kz) {
-        for (int kx = 0; kx < grid_count; ++kx) {
-            unsigned int const idx00 = static_cast<unsigned int>(index(kx, kz));
-            unsigned int const idx10 = static_cast<unsigned int>(index(kx + 1, kz));
-            unsigned int const idx01 = static_cast<unsigned int>(index(kx, kz + 1));
-            unsigned int const idx11 = static_cast<unsigned int>(index(kx + 1, kz + 1));
+    for (int ka = 0; ka < angular_count; ++ka) {
+        unsigned int const current = static_cast<unsigned int>(ring_index(1, ka));
+        unsigned int const next = static_cast<unsigned int>(ring_index(1, (ka + 1) % angular_count));
+        lake.connectivity.push_back({0, current, next});
+    }
 
-            bool const valid00 = valid[idx00] != 0;
-            bool const valid10 = valid[idx10] != 0;
-            bool const valid01 = valid[idx01] != 0;
-            bool const valid11 = valid[idx11] != 0;
+    for (int kr = 2; kr <= radial_count; ++kr) {
+        for (int ka = 0; ka < angular_count; ++ka) {
+            unsigned int const inner_current = static_cast<unsigned int>(ring_index(kr - 1, ka));
+            unsigned int const inner_next = static_cast<unsigned int>(ring_index(kr - 1, (ka + 1) % angular_count));
+            unsigned int const outer_current = static_cast<unsigned int>(ring_index(kr, ka));
+            unsigned int const outer_next = static_cast<unsigned int>(ring_index(kr, (ka + 1) % angular_count));
 
-            if (valid00 && valid10 && valid11)
-                lake.connectivity.push_back({idx00, idx10, idx11});
-            if (valid00 && valid11 && valid01)
-                lake.connectivity.push_back({idx00, idx11, idx01});
+            lake.connectivity.push_back({inner_current, outer_current, outer_next});
+            lake.connectivity.push_back({inner_current, outer_next, inner_next});
         }
     }
 

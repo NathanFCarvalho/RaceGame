@@ -88,6 +88,22 @@ void add_leaf_cluster(mesh& tree, vec3 const& center, float radius, vec3 const& 
     tree.connectivity.push_back({idx + 5, idx + 1, idx + 4});
 }
 
+void add_leaf_cloud(mesh& tree, std::mt19937& generator, vec3 const& center, float radius, vec3 const& color)
+{
+    std::uniform_real_distribution<float> offset_distribution(-0.65f, 0.65f);
+    std::uniform_real_distribution<float> scale_distribution(0.55f, 0.95f);
+
+    add_leaf_cluster(tree, center, radius, color);
+    for (int k = 0; k < 4; ++k) {
+        vec3 const offset = radius * vec3{
+            offset_distribution(generator),
+            0.55f * offset_distribution(generator),
+            offset_distribution(generator)
+        };
+        add_leaf_cluster(tree, center + offset, radius * scale_distribution(generator), color);
+    }
+}
+
 void add_fractal_branch(
     mesh& tree,
     std::mt19937& generator,
@@ -108,8 +124,18 @@ void add_fractal_branch(
 
     if (depth <= 0) {
         float const green_shift = color_distribution(generator);
-        add_leaf_cluster(tree, end, 2.6f * radius, {0.08f + 0.05f * green_shift, 0.34f + 0.22f * green_shift, 0.08f});
+        add_leaf_cloud(tree, generator, end, 3.2f * radius, {0.08f + 0.05f * green_shift, 0.34f + 0.22f * green_shift, 0.08f});
         return;
+    }
+
+    if (depth <= 2) {
+        float const green_shift = color_distribution(generator);
+        add_leaf_cloud(
+            tree,
+            generator,
+            start + 0.78f * (end - start),
+            1.9f * radius,
+            {0.07f + 0.05f * green_shift, 0.30f + 0.20f * green_shift, 0.07f});
     }
 
     vec3 reference = std::abs(dot(dir, {0.0f, 1.0f, 0.0f})) > 0.92f ? vec3{1.0f, 0.0f, 0.0f} : vec3{0.0f, 1.0f, 0.0f};
